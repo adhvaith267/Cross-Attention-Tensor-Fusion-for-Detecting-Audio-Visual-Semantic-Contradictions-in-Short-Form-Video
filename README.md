@@ -155,7 +155,7 @@ python -m av_contradiction.cli.extract_features --set data.manifest=data/manifes
 
 1. Push this repository to GitHub. In Kaggle, create a notebook from `kaggle_train.ipynb`
    (*File → Import Notebook*), set *Accelerator* to GPU and *Internet* to On.
-2. Set `REPO_URL`. For a private repo, add a GitHub token as the Kaggle secret `GITHUB_TOKEN`.
+2. `REPO_URL` already points at the project repo. For a private repo, add a GitHub token as the Kaggle secret `GITHUB_TOKEN`.
 3. *Save Version → Save & Run All*. The notebook clones the code, downloads AVHBench from the Google
    Drive links in its README (or uses an attached Kaggle Dataset named `*avhbench*` if Drive refuses),
    builds group-safe splits, extracts CLIP + CLAP features, trains every preset over 3 seeds and
