@@ -1,0 +1,49 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "av-contradiction"
+version = "0.1.0"
+description = "Cross-attention tensor fusion for detecting audio-visual semantic contradictions in short-form video."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+dependencies = [
+    "torch>=2.2",
+    "numpy>=1.24",
+    "scikit-learn>=1.3",
+    "pyyaml>=6.0",
+    "pydantic>=2.5",
+    "imageio-ffmpeg>=0.5",
+    "matplotlib>=3.7",
+]
+
+[project.optional-dependencies]
+# Pretrained encoders (CLIP, CLAP, Whisper). Weights are NOT downloaded unless
+# encoders.local_files_only is set to false.
+encoders = ["transformers>=4.40", "safetensors>=0.4"]
+dashboard = ["streamlit>=1.32"]
+logging = ["tensorboard>=2.14"]
+dev = ["pytest>=7.4", "ruff>=0.4"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["src/tests"]
+pythonpath = ["src"]
+markers = [
+    "integration: requires real pretrained weights or a real dataset (deselect with -m 'not integration')",
+    "gpu: requires a CUDA GPU",
+]
+addopts = "-m 'not integration'"
+
+[tool.ruff]
+line-length = 110
+target-version = "py310"
+extend-exclude = ["notebooks"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+ignore = ["E501", "B008"]
