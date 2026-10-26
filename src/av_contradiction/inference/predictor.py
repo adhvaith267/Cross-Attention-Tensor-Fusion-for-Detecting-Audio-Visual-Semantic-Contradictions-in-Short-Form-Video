@@ -21,9 +21,7 @@ from av_contradiction.inference.schemas import (
     FrameEvidence,
     ModelInfo,
     PredictionResult,
-    TranscriptSegment,
 )
-from av_contradiction.models.classifier import EndToEndModel
 from av_contradiction.training.checkpointing import load_checkpoint
 from av_contradiction.training.metrics import softmax
 from av_contradiction.utils.device import select_device
@@ -33,24 +31,13 @@ log = get_logger(__name__)
 
 
 class Predictor:
-    def __init__(
-        self,
-        checkpoint: str | Path,
-        device: str = "auto",
-        overrides: list[str] | None = None,
-        transcribe: bool | None = None,
-    ) -> None:
+    def __init__(self, checkpoint: str | Path, device: str = "auto", overrides: list[str] | None = None) -> None:
         self.checkpoint = Path(checkpoint)
         self.ckpt = load_checkpoint(self.checkpoint, "cpu")
         self.cfg = config_from_checkpoint(self.ckpt, overrides)
         self.device = select_device(device)
         self.model = load_model(self.ckpt, self.cfg, self.device)
-        if isinstance(self.model, EndToEndModel):
-            self.extractor = FeatureExtractor(self.cfg, self.device, self.model.video_encoder, self.model.audio_encoder)
-            self.head = self.model.fusion_model
-        else:
-            self.extractor = FeatureExtractor(self.cfg, self.device)
-            self.head = self.model
+        self.extractor = FeatureExtractor(self.cfg, self.device)
         if self.extractor.dims != (self.ckpt["audio_dim"], self.ckpt["video_dim"]):
             raise ValueError(f"Encoder dims {self.extractor.dims} do not match checkpoint dims")
         self.label_names = list(self.ckpt["label_names"])
@@ -62,14 +49,6 @@ class Predictor:
             self.temperature = float(cal_data["temperature"])
             self.calibration_degenerate = bool(cal_data.get("at_bound", False))
         self.feature_stats: dict[str, Any] = self.ckpt.get("feature_stats") or {}
-        self.transcriber = None
-        if transcribe if transcribe is not None else self.cfg.encoders.transcribe:
-            from av_contradiction.inference.transcription import WhisperTranscriber
-
-            self.transcriber = WhisperTranscriber(
-                self.cfg.encoders.whisper_model_name, self.cfg.encoders.local_files_only,
-                "cuda" if self.device.type == "cuda" else "cpu",
-            )
 
     def info(self) -> ModelInfo:
         return ModelInfo(
@@ -108,8 +87,8 @@ class Predictor:
         timing["encode_ms"] = (time.perf_counter() - t1) * 1000
         t2 = time.perf_counter()
         batch = move_batch(collate_features([{**feats, "label": 0, "sample_id": "input"}]), self.device)
-        want_attn = self.cfg.inference.return_attention and getattr(self.head, "cross", None) is not None
-        out = self.head(batch, return_attention=want_attn)
+        want_attn = self.model.cross is not None
+        out = self.model(batch, return_attention=want_attn)
         timing["model_ms"] = (time.perf_counter() - t2) * 1000
         logits = out["logits"].float().cpu().numpy()
         probs = softmax(logits, self.temperature or 1.0)[0]
@@ -132,22 +111,12 @@ class Predictor:
             warnings.append("Calibration is degenerate (temperature at its bound because validation was separable); "
                             "treat the probability as uncalibrated.")
 
-        transcript: list[TranscriptSegment] = []
-        audio_summary = None
-        if self.transcriber is not None and clip.has_audio:
-            transcript = [TranscriptSegment(**s) for s in self.transcriber.transcribe(path, self.cfg.preprocess.ffmpeg_path)]
-            audio_summary = " ".join(s.text for s in transcript) or None
-        if audio_summary is None:
-            warnings.append("No transcript available (transcription disabled or no speech); audio_summary is empty.")
-        warnings.append("No visual captioner is configured; visual_summary is empty.")
-
         evidence = Evidence(
             frames=[FrameEvidence(index=i, timestamp_sec=float(t)) for i, t in enumerate(clip.frame_ts)],
             audio_windows=[
                 AudioWindowEvidence(index=i, start_sec=float(s), end_sec=float(e), silent=bool(clip.audio_silent[i]))
                 for i, (s, e) in enumerate(clip.audio_ts)
             ],
-            transcript=transcript,
             attention_links=self._attention_links(out, clip) if want_attn else [],
         )
         return (
@@ -163,8 +132,6 @@ class Predictor:
                     if self.temperature is not None and not self.calibration_degenerate
                     else "Raw or degenerately scaled softmax score; not a calibrated probability."
                 ),
-                audio_summary=audio_summary,
-                visual_summary=None,
                 evidence=evidence,
                 warnings=warnings,
                 duration_sec=float(clip.duration_sec),

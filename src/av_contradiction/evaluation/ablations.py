@@ -22,6 +22,7 @@ from av_contradiction.data.manifest import filter_split, read_manifest
 from av_contradiction.evaluation.evaluate import evaluate_checkpoint
 from av_contradiction.evaluation.reporting import aggregate, markdown_table, plot_comparison, save_json
 from av_contradiction.models.baselines import MajorityClassBaseline, ProjectedSimilarityBaseline
+from av_contradiction.training.checkpointing import load_checkpoint, save_checkpoint
 from av_contradiction.training.metrics import compute_metrics
 from av_contradiction.training.trainer import train_from_config
 from av_contradiction.utils.logging import get_logger
@@ -93,7 +94,7 @@ def run_suite(cfg: Config, presets: list[str] | tuple[str, ...] = DEFAULT_SUITE,
                     ev = evaluate_checkpoint(train.best_checkpoint, overrides=None, output_dir=cfg.evaluation.output_dir)
                     results.append({
                         "preset": preset, "seed": seed, "status": "ok", "val_macro_f1": train.best_metric, "metrics": ev["metrics"],
-                        "metrics_uncalibrated": ev["metrics_uncalibrated"], "params": ev["params_trainable_head"],
+                        "metrics_uncalibrated": ev["metrics_uncalibrated"], "params": ev["params"],
                         "latency_ms": ev["latency_ms_per_clip_fusion_only"], "best_epoch": train.best_epoch,
                         "stopped_reason": train.stopped_reason, "checkpoint": train.best_checkpoint,
                         "macro_f1_ci95": ev["macro_f1_ci95"], "temperature": ev.get("temperature"), "report_dir": ev["report_dir"],
@@ -123,7 +124,9 @@ def save_best_model(results: list[dict[str, Any]], dest: Path) -> dict[str, Any]
     best = max(neural, key=lambda r: r["val_macro_f1"])
     ckpt = Path(best["checkpoint"])
     dest.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(ckpt, dest / "best.pt")
+    # Inference needs no optimizer/scheduler state; dropping it keeps the released file small (~13 MB).
+    state = {k: v for k, v in load_checkpoint(ckpt).items() if k not in ("optimizer_state", "scheduler_state", "scaler_state")}
+    save_checkpoint(dest / "best.pt", state)
     if (cal := ckpt.with_name("calibration.json")).is_file():
         shutil.copy2(cal, dest / "calibration.json")
     if (report := Path(best["report_dir"]) / "metrics_test.json").is_file():

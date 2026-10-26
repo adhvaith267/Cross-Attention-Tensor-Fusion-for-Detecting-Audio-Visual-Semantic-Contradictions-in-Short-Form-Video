@@ -1,9 +1,9 @@
 """Per-frame visual encoders.
 
 Every encoder maps sampled frames ``uint8 [T, S, S, 3]`` to embeddings ``[T, D]`` in two steps:
-``prepare`` (non-differentiable preprocessing, CPU) and ``forward`` (differentiable when the
-encoder is unfrozen). These are *image* encoders applied frame by frame: any temporal
-reasoning happens later, in the cross-attention layers over time-stamped frame sequences.
+``prepare`` (preprocessing on CPU) and ``forward`` (frozen encoder). These are *image* encoders
+applied frame by frame: temporal reasoning happens later, in the cross-attention layers over
+time-stamped frame sequences.
 """
 
 from __future__ import annotations
@@ -13,22 +13,17 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from av_contradiction.config import EncoderConfig, PreprocessConfig
+from av_contradiction.config import EncoderConfig
 
 CLIP_MEAN = (0.48145466, 0.4578275, 0.40821073)
 CLIP_STD = (0.26862954, 0.26130258, 0.27577711)
 
 
 class VideoEncoder(nn.Module):
-    name: str = "base"
     dim: int = 0
 
     def prepare(self, frames: np.ndarray) -> torch.Tensor:
         raise NotImplementedError
-
-    def unfreeze_last_n(self, n: int) -> list[nn.Parameter]:
-        """Unfreeze the last ``n`` blocks and return their parameters (empty if none are trainable)."""
-        return []
 
 
 class HandcraftedVideoEncoder(VideoEncoder):
@@ -37,7 +32,6 @@ class HandcraftedVideoEncoder(VideoEncoder):
     Per frame: 4x4x4 joint RGB histogram (64), channel mean/std (6) and 2x2 spatial channel means (12).
     """
 
-    name = "handcrafted"
     dim = 82
 
     def prepare(self, frames: np.ndarray) -> torch.Tensor:
@@ -59,9 +53,7 @@ class HandcraftedVideoEncoder(VideoEncoder):
 class CLIPVideoEncoder(VideoEncoder):
     """CLIP ViT image tower (``transformers``); returns projected image embeddings per frame."""
 
-    name = "clip"
-
-    def __init__(self, model_name: str, local_files_only: bool = True, image_size: int = 224) -> None:
+    def __init__(self, model_name: str, local_files_only: bool = True) -> None:
         super().__init__()
         try:
             from transformers import CLIPVisionModelWithProjection
@@ -92,20 +84,10 @@ class CLIPVideoEncoder(VideoEncoder):
         x = (x.to(self.mean.device) - self.mean) / self.std
         return self.model(pixel_values=x).image_embeds
 
-    def unfreeze_last_n(self, n: int) -> list[nn.Parameter]:
-        if n <= 0:
-            return []
-        layers = self.model.vision_model.encoder.layers[-n:]
-        params = [p for layer in layers for p in layer.parameters()]
-        params += list(self.model.vision_model.post_layernorm.parameters()) + list(self.model.visual_projection.parameters())
-        for p in params:
-            p.requires_grad_(True)
-        return params
 
-
-def build_video_encoder(enc: EncoderConfig, pre: PreprocessConfig) -> VideoEncoder:
+def build_video_encoder(enc: EncoderConfig) -> VideoEncoder:
     if enc.video == "handcrafted":
         return HandcraftedVideoEncoder()
     if enc.video == "clip":
-        return CLIPVideoEncoder(enc.video_model_name, enc.local_files_only, pre.frame_size)
+        return CLIPVideoEncoder(enc.video_model_name, enc.local_files_only)
     raise ValueError(f"Unknown video encoder '{enc.video}'")

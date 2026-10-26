@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from av_contradiction.config import replace_section
+from av_contradiction.data.manifest import resolve_video_path
 from av_contradiction.evaluation.ablations import run_suite
 from av_contradiction.evaluation.evaluate import evaluate_checkpoint
 from av_contradiction.inference.predictor import Predictor
@@ -47,7 +48,8 @@ def test_predictor_end_to_end(trained_checkpoint, mini_dataset):
     r = pred.predict(path)
     assert r.label in ("consistent", "contradictory", "uncertain")
     assert r.timing_ms["decode_ms"] > 0
-    assert r.visual_summary is None and any("visual captioner" in w for w in r.warnings)
+    assert len(r.evidence.frames) == mini_dataset["cfg"].preprocess.num_frames
+    assert r.evidence.attention_links  # the proposed model exposes audio->video attention
 
 
 def test_nan_guard(mini_dataset, monkeypatch):
@@ -77,5 +79,8 @@ def test_ablation_suite_runs(mini_dataset):
     best = res["best"]
     assert best["preset"] in ("audio_only", "xattn_tensor")  # only neural runs are eligible
     assert best["val_macro_f1"] == max(r["val_macro_f1"] for r in res["runs"] if "val_macro_f1" in r)
-    assert Path(res["output_dir"], "best_model", "best.pt").exists()
+    released = Path(res["output_dir"], "best_model", "best.pt")
     assert Path(res["output_dir"], "best_model", "metrics_test.json").exists()
+    assert "optimizer_state" not in load_checkpoint(released)  # slim file for shipping in models/
+    video = resolve_video_path(mini_dataset["rows"][0], mini_dataset["cfg"].data.root_dir)
+    assert Predictor(released, "cpu").predict(video).label in ("consistent", "contradictory", "uncertain")

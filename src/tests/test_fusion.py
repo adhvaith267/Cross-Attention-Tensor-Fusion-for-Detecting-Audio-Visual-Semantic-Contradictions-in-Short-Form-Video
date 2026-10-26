@@ -3,6 +3,7 @@ import math
 import pytest
 import torch
 
+from av_contradiction.models.classifier import count_parameters
 from av_contradiction.models.tensor_fusion import LowRankTensorFusion
 
 
@@ -14,8 +15,8 @@ def test_low_rank_fusion_shapes_and_params(dims, rank):
     assert y.shape == (3, out_dim)
     expected = rank * sum(d + 1 for d in dims) * out_dim + rank + out_dim
     norms = sum(2 * d for d in dims) + 2 * out_dim  # LayerNorm affine params
-    assert f.num_parameters() == expected + norms
-    assert f.full_tensor_weight_count() == math.prod(d + 1 for d in dims) * out_dim
+    assert count_parameters(f) == expected + norms
+    assert expected < math.prod(d + 1 for d in dims) * out_dim or len(dims) == 1  # factorised < dense
 
 
 def test_low_rank_fusion_captures_multiplicative_interaction():

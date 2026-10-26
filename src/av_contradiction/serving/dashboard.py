@@ -30,8 +30,12 @@ def load_predictor(checkpoint: str, device: str):
 
 
 def find_checkpoints() -> list[str]:
-    ck = ROOT / "output" / "checkpoints"
-    return sorted(str(p) for p in ck.rglob("best.pt")) if ck.exists() else []
+    """Released models (models/) first, then local training runs (output/checkpoints/)."""
+    found: list[str] = []
+    for base in (ROOT / "models", ROOT / "output" / "checkpoints"):
+        if base.exists():
+            found += sorted(str(p) for p in base.rglob("best.pt"))
+    return found
 
 
 def find_report(pred, checkpoint: str) -> tuple[Path, dict] | None:
@@ -51,12 +55,24 @@ def display_path(path: Path) -> str:
 
 
 def run_local(checkpoint: str, device: str, video: Path):
-    pred = load_predictor(checkpoint, device)
-    result, clip = pred.predict_clip(video)
-    return result, clip, pred
+    return load_predictor(checkpoint, device).predict_clip(video)
 
 
-def show_result(title: str, res: PredictionResult, clip=None) -> None:
+def least_supported_moments(res: PredictionResult, top: int = 3) -> list[dict]:
+    """Audio windows whose cross-attention went most to the "no matching visual evidence" token."""
+    windows = {w.index: w for w in res.evidence.audio_windows}
+    ranked = sorted(res.evidence.attention_links, key=lambda a: a.null_weight, reverse=True)[:top]
+    return [
+        {
+            "audio": f"{windows[a.audio_window_index].start_sec:.1f}-{windows[a.audio_window_index].end_sec:.1f}s",
+            "no-visual-match weight": round(a.null_weight, 3),
+            "closest attended frame": f"#{a.video_frame_index} @ {a.video_time_sec:.2f}s" if a.video_frame_index is not None else "none",
+        }
+        for a in ranked
+    ]
+
+
+def show_result(title: str, res: PredictionResult, clip) -> None:
     st.subheader(title)
     colour = {"contradictory": "red", "consistent": "green", "uncertain": "orange"}[res.label]
     st.markdown(f"### :{colour}[{res.label.upper()}]")
@@ -66,24 +82,24 @@ def show_result(title: str, res: PredictionResult, clip=None) -> None:
     st.caption(f"Confidence {res.confidence:.3f}. {res.confidence_interpretation}")
     for w in res.warnings:
         st.warning(w)
-    with st.expander("Model", expanded=False):
-        st.json(res.model.model_dump())
-        st.write("Timing (ms):", res.timing_ms)
+
+    if res.evidence.attention_links:
+        st.markdown("**Moments with the least visual support**")
+        st.table(least_supported_moments(res))
+        st.caption("Audio windows whose attention went mostly to the model's 'no matching visual evidence' token. "
+                   "A hint for where to look, not proof of where a contradiction is.")
 
     st.markdown("**Sampled frames** (model inputs, with timestamps)")
-    if clip is not None and clip.has_video:
+    if clip.has_video:
         cols = st.columns(min(8, len(clip.frames)))
         for i, (f, t) in enumerate(zip(clip.frames, clip.frame_ts, strict=True)):
             cols[i % len(cols)].image(f, caption=f"#{i} @ {t:.2f}s", width="stretch")
     else:
-        st.write([f"#{f.index} @ {f.timestamp_sec:.2f}s" for f in res.evidence.frames] or "No frames decoded.")
+        st.write("No frames decoded.")
 
-    if res.evidence.transcript:
-        st.markdown("**Transcript**")
-        st.table([s.model_dump() for s in res.evidence.transcript])
-    elif res.audio_summary is None:
-        st.caption("No transcript (Whisper disabled or unavailable).")
-
+    with st.expander("Model", expanded=False):
+        st.json(res.model.model_dump())
+        st.write("Timing (ms):", res.timing_ms)
     with st.expander("Audio windows"):
         st.table([w.model_dump() for w in res.evidence.audio_windows])
     if res.evidence.attention_links:
@@ -106,7 +122,7 @@ def main() -> None:
             env_ckpt = str(Path(env_ckpt).resolve())  # same form as the discovered paths, so it is listed once
         if env_ckpt and env_ckpt not in found:
             found.insert(0, env_ckpt)  # honour an explicitly configured checkpoint
-        default = env_ckpt or (found[-1] if found else "")
+        default = env_ckpt or (found[0] if found else "")
         ckpt = st.selectbox("Checkpoint", found, index=found.index(default) if default in found else 0) if found else st.text_input("Checkpoint path", default)
         compare = st.checkbox("Comparison mode (second model, e.g. a unimodal baseline)")
         ckpt2 = None
@@ -148,10 +164,10 @@ def main() -> None:
         tmp_path = Path(tmp.name)
     try:
         with st.status("Processing: decoding, encoding, predicting...", expanded=False) as status:
-            res, clip, _ = run_local(ckpt, device, tmp_path)
+            res, clip = run_local(ckpt, device, tmp_path)
             results = [(f"Model: {Path(ckpt).parent.name}", res, clip)]
             if compare and ckpt2 and Path(ckpt2).is_file():
-                res2, clip2, _ = run_local(ckpt2, device, tmp_path)
+                res2, clip2 = run_local(ckpt2, device, tmp_path)
                 results.append((f"Comparison: {Path(ckpt2).parent.name}", res2, clip2))
             status.update(label="Done", state="complete")
         cols = st.columns(len(results))

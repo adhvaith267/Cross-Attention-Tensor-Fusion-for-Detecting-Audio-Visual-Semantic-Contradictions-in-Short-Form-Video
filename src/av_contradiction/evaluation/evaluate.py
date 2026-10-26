@@ -16,14 +16,8 @@ import torch
 from torch import nn
 from torch.utils.data import DataLoader
 
-from av_contradiction.config import Config, build_config, parse_overrides
-from av_contradiction.data.dataset import (
-    CachedFeatureDataset,
-    RawVideoDataset,
-    collate_features,
-    collate_raw,
-    move_batch,
-)
+from av_contradiction.config import Config, build_config
+from av_contradiction.data.dataset import CachedFeatureDataset, collate_features, move_batch
 from av_contradiction.data.manifest import filter_split, manifest_hash, read_manifest
 from av_contradiction.evaluation.reporting import (
     plot_confusion,
@@ -31,9 +25,7 @@ from av_contradiction.evaluation.reporting import (
     save_json,
     write_predictions,
 )
-from av_contradiction.models.audio_encoder import build_audio_encoder
-from av_contradiction.models.classifier import EndToEndModel, build_model, count_parameters
-from av_contradiction.models.video_encoder import build_video_encoder
+from av_contradiction.models.classifier import AVContradictionModel, count_parameters
 from av_contradiction.training.checkpointing import load_checkpoint
 from av_contradiction.training.metrics import (
     TEMP_BOUNDS,
@@ -49,28 +41,21 @@ log = get_logger(__name__)
 
 
 def config_from_checkpoint(ckpt: dict[str, Any], overrides: list[str] | None = None) -> Config:
-    raw = ckpt["config"]
-    raw.setdefault("hardware", {})["profile"] = "none"
-    return build_config(raw, overrides, strict=False)
+    """Rebuild the training config stored in a checkpoint (unknown keys are dropped with a warning)."""
+    return build_config(ckpt["config"], overrides, strict=False)
 
 
 def load_model(ckpt: dict[str, Any], cfg: Config, device: torch.device) -> nn.Module:
-    model: nn.Module = build_model(cfg.model, ckpt["audio_dim"], ckpt["video_dim"])
+    model = AVContradictionModel(cfg.model, ckpt["audio_dim"], ckpt["video_dim"])
     model.load_state_dict(ckpt["model_state"])
-    if "encoder_state" in ckpt:
-        e2e = EndToEndModel(build_video_encoder(cfg.encoders, cfg.preprocess), build_audio_encoder(cfg.encoders, cfg.preprocess), model)
-        e2e.load_state_dict(ckpt["encoder_state"], strict=False)
-        model = e2e
     return model.to(device).eval()
 
 
-def _dataset(cfg: Config, rows, model: nn.Module):
-    if isinstance(model, EndToEndModel):
-        return RawVideoDataset(cfg, rows, model.video_encoder, model.audio_encoder), collate_raw
+def _dataset(cfg: Config, rows) -> CachedFeatureDataset:
     ds = CachedFeatureDataset(cfg, rows)
     if ds.missing:
         log.warning("%d samples lack cached features and are excluded from evaluation", len(ds.missing))
-    return ds, collate_features
+    return ds
 
 
 @torch.no_grad()
@@ -87,11 +72,11 @@ def collect_logits(model: nn.Module, loader: DataLoader, device: torch.device) -
 
 
 @torch.no_grad()
-def measure_latency(model: nn.Module, dataset, collate, device: torch.device, warmup: int, iters: int) -> float | None:
+def measure_latency(model: nn.Module, dataset, device: torch.device, warmup: int, iters: int) -> float | None:
     """Mean forward latency (ms) for a single clip on pre-extracted features (excludes decoding/encoding)."""
     if len(dataset) == 0:
         return None
-    batch = move_batch(collate([dataset[0]]), device)
+    batch = move_batch(collate_features([dataset[0]]), device)
     for _ in range(warmup):
         model(batch)
     if device.type == "cuda":
@@ -124,10 +109,10 @@ def evaluate_checkpoint(
     warnings: list[str] = []
     if mh != ckpt.get("manifest_hash"):
         warnings.append("Manifest hash differs from the one used in training; splits may not be comparable.")
-    test_ds, collate = _dataset(cfg, filter_split(rows, split), model)
+    test_ds = _dataset(cfg, filter_split(rows, split))
     if len(test_ds) == 0:
         raise ValueError(f"No evaluable samples in split '{split}'")
-    loader = DataLoader(test_ds, batch_size=cfg.training.batch_size, shuffle=False, collate_fn=collate, num_workers=cfg.training.num_workers)
+    loader = DataLoader(test_ds, batch_size=cfg.training.batch_size, shuffle=False, collate_fn=collate_features)
     reset_peak_memory(dev)
     logits, labels, ids = collect_logits(model, loader, dev)
     peak = peak_memory_mb(dev)
@@ -145,10 +130,9 @@ def evaluate_checkpoint(
         "best_epoch": ckpt.get("best_epoch"),
         "metrics_uncalibrated": compute_metrics(labels, probs, labels_names, cfg.evaluation.ece_bins),
         "macro_f1_ci95": bootstrap_ci(labels, probs, "macro_f1", cfg.evaluation.n_bootstrap, seed=cfg.training.seed),
-        "params_total": count_parameters(model),
-        "params_trainable_head": count_parameters(getattr(model, "fusion_model", model)),
+        "params": count_parameters(model),
         "latency_ms_per_clip_fusion_only": measure_latency(
-            model, test_ds, collate, dev, cfg.evaluation.latency_warmup, cfg.evaluation.latency_iters
+            model, test_ds, dev, cfg.evaluation.latency_warmup, cfg.evaluation.latency_iters
         ),
         "peak_gpu_memory_mb": peak,
         "device": str(dev),
@@ -157,9 +141,9 @@ def evaluate_checkpoint(
 
     final_probs = probs
     if cfg.evaluation.calibrate:
-        val_ds, _ = _dataset(cfg, filter_split(rows, "val"), model)
+        val_ds = _dataset(cfg, filter_split(rows, "val"))
         if len(val_ds):
-            vl, vlab, _ = collect_logits(model, DataLoader(val_ds, batch_size=cfg.training.batch_size, collate_fn=collate), dev)
+            vl, vlab, _ = collect_logits(model, DataLoader(val_ds, batch_size=cfg.training.batch_size, collate_fn=collate_features), dev)
             temp = fit_temperature(vl, vlab)
             at_bound = temp <= TEMP_BOUNDS[0] * 1.01 or temp >= TEMP_BOUNDS[1] * 0.99
             if at_bound:
@@ -190,6 +174,3 @@ def evaluate_checkpoint(
     plot_reliability(final_probs, labels, out / f"reliability_{split}.png", cfg.evaluation.ece_bins, cfg.experiment_name)
     log.info("[%s] %s macro-F1 %.4f acc %.4f -> %s", cfg.experiment_name, split, result["metrics"]["macro_f1"], result["metrics"]["accuracy"], out)
     return result
-
-
-__all__ = ["evaluate_checkpoint", "load_model", "config_from_checkpoint", "collect_logits", "parse_overrides"]

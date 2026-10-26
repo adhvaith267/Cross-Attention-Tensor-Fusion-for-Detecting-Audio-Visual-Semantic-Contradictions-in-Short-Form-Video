@@ -1,24 +1,39 @@
-# Environments
+# Python / tooling
 .venv/
+venv/
 __pycache__/
+*.py[cod]
 *.egg-info/
+build/
+dist/
 .pytest_cache/
 .ruff_cache/
 .ipynb_checkpoints/
+.streamlit/secrets.toml
 
-# Data, features, models and generated artifacts (never commit these)
-data/
-output/
-*.pt
-*.pth
-*.ckpt
-*.safetensors
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Datasets, feature caches, training runs and reports (regenerated, never committed)
+/data/
+/output/
 *.mp4
 *.mov
 *.mkv
 *.webm
 *.avi
 *.wav
+*.zip
+
+# Model weights are ignored everywhere except the released model in models/
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+!/models/**/*.pt
 
 # Secrets
 .env

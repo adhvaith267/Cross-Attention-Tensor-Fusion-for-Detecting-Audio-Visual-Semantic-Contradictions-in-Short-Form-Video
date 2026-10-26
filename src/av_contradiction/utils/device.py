@@ -17,22 +17,6 @@ def select_device(preference: str = "auto") -> torch.device:
     return torch.device(preference)
 
 
-def gpu_memory_gb(device_index: int = 0) -> float | None:
-    if not torch.cuda.is_available():
-        return None
-    return torch.cuda.get_device_properties(device_index).total_memory / 1024**3
-
-
-def recommend_profile() -> str:
-    """Pick a hardware profile from detected VRAM. CPU-only machines get ``low_memory``."""
-    mem = gpu_memory_gb()
-    if mem is None or mem < 10:
-        return "low_memory"
-    if mem < 24:
-        return "standard_gpu"
-    return "experimental"
-
-
 def amp_supported(device: torch.device) -> bool:
     return device.type == "cuda"
 
@@ -45,7 +29,6 @@ def environment_report() -> dict[str, Any]:
         "cuda_available": torch.cuda.is_available(),
         "cuda_version": torch.version.cuda,
         "gpus": [],
-        "recommended_profile": recommend_profile(),
     }
     if torch.cuda.is_available():
         for i in range(torch.cuda.device_count()):

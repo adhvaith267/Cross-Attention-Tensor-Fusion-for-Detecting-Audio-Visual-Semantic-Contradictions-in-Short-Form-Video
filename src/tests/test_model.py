@@ -3,7 +3,7 @@ import torch
 
 from av_contradiction.config import ModelConfig
 from av_contradiction.evaluation.ablations import PRESETS
-from av_contradiction.models.classifier import AVContradictionModel, EndToEndModel
+from av_contradiction.models.classifier import AVContradictionModel
 from av_contradiction.models.cross_attention import BidirectionalCrossAttention
 from av_contradiction.training.losses import build_loss
 
@@ -88,25 +88,6 @@ def test_sdpa_and_explicit_attention_agree():
     o1 = x(a, ma, v, mv, bias, need_weights=False)
     o2 = x(a, ma, v, mv, bias, need_weights=True)
     assert torch.allclose(o1["audio"], o2["audio"], atol=1e-5) and torch.allclose(o1["video"], o2["video"], atol=1e-5)
-
-
-def test_end_to_end_wrapper_with_handcrafted_encoders(mini_dataset):
-    import numpy as np
-
-    from av_contradiction.models.audio_encoder import HandcraftedAudioEncoder
-    from av_contradiction.models.video_encoder import HandcraftedVideoEncoder
-
-    venc, aenc = HandcraftedVideoEncoder(), HandcraftedAudioEncoder(16000)
-    m = EndToEndModel(venc, aenc, AVContradictionModel(small_cfg(), aenc.dim, venc.dim))
-    frames = np.random.randint(0, 255, (3, 16, 16, 3), dtype=np.uint8)
-    batch = {
-        "video_inputs": [venc.prepare(frames), venc.prepare(frames[:2])],
-        "audio_inputs": [aenc.prepare(np.random.randn(2, 8000).astype("float32")), aenc.prepare(np.zeros((0, 8000), "float32"))],
-        "video_ts": torch.tensor([[0.1, 0.2, 0.3], [0.1, 0.2, 0.0]]), "video_mask": torch.tensor([[True] * 3, [True, True, False]]),
-        "audio_ts": torch.tensor([[[0, 0.5], [0.5, 1]], [[0, 0], [0, 0]]]).float(), "audio_mask": torch.tensor([[True, True], [False, False]]),
-    }
-    out = m(batch)
-    assert out["logits"].shape == (2, 2) and torch.isfinite(out["logits"]).all()
 
 
 @pytest.mark.gpu

@@ -18,10 +18,9 @@ def tiny_config(tmp: Path, **extra) -> Config:
                        "audio_hop_sec": 0.5, "max_audio_windows": 8},
         "encoders": {"video": "handcrafted", "audio": "handcrafted"},
         "model": {"hidden_dim": 32, "num_heads": 4, "num_layers": 1, "fusion_dim": 16, "fusion_rank": 2, "classifier_hidden": 16},
-        "training": {"batch_size": 4, "epochs": 2, "lr": 1e-3, "checkpoint_dir": str(tmp / "ckpt"), "log_dir": str(tmp / "runs"),
+        "training": {"batch_size": 4, "epochs": 2, "lr": 1e-3, "checkpoint_dir": str(tmp / "ckpt"),
                      "device": "cpu", "early_stopping_patience": 5},
         "evaluation": {"output_dir": str(tmp / "reports"), "n_bootstrap": 50, "latency_iters": 2, "latency_warmup": 1},
-        "hardware": {"profile": "none"},
     }
     for section, vals in extra.items():
         raw.setdefault(section, {}).update(vals)

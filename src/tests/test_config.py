@@ -1,6 +1,6 @@
 import pytest
 
-from av_contradiction.config import PROFILES, build_config, load_config, parse_overrides
+from av_contradiction.config import build_config, load_config, parse_overrides
 
 
 def test_overrides_parse_types():
@@ -11,12 +11,6 @@ def test_overrides_parse_types():
 def test_unknown_key_raises():
     with pytest.raises(KeyError):
         build_config({"model": {"hiden_dim": 3}})
-
-
-def test_profile_precedence_yaml_wins():
-    cfg = build_config({"hardware": {"profile": "low_memory"}, "model": {"hidden_dim": 96, "num_heads": 4}})
-    assert cfg.model.hidden_dim == 96  # explicit YAML beats profile
-    assert cfg.training.grad_accum_steps == PROFILES["low_memory"]["training"]["grad_accum_steps"]
 
 
 def test_cli_beats_yaml():
@@ -46,8 +40,6 @@ def test_feature_hash_tracks_preprocessing():
 
 
 def test_checkpoint_configs_tolerate_obsolete_keys():
-    from av_contradiction.config import config_from_dict
-
     with pytest.warns(UserWarning, match="obsolete"):
-        cfg = config_from_dict({"data": {"removed_option": True}, "model": {"hidden_dim": 32, "num_heads": 4}})
+        cfg = build_config({"data": {"removed_option": True}, "model": {"hidden_dim": 32, "num_heads": 4}}, strict=False)
     assert cfg.model.hidden_dim == 32

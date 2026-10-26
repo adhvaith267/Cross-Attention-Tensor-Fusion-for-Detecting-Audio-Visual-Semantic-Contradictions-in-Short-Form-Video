@@ -23,8 +23,6 @@ Inputs are LayerNorm-ed first so the M-way elementwise product stays numerically
 
 from __future__ import annotations
 
-import math
-
 import torch
 from torch import nn
 
@@ -60,13 +58,6 @@ class LowRankTensorFusion(nn.Module):
             fused = proj if fused is None else fused * proj
         out = torch.einsum("r,rbo->bo", self.rank_weights.to(fused.dtype), fused) + self.bias
         return self.dropout(self.out_norm(out))
-
-    def num_parameters(self) -> int:
-        return sum(p.numel() for p in self.parameters())
-
-    def full_tensor_weight_count(self) -> int:
-        """Weights a dense (non-factorised) tensor-fusion layer would need, for documentation."""
-        return math.prod(d + 1 for d in self.input_dims) * self.out_dim
 
 
 class ConcatFusion(nn.Module):

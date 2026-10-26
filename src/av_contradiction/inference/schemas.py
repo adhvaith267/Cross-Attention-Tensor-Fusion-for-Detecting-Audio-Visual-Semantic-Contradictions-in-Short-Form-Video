@@ -19,12 +19,6 @@ class AudioWindowEvidence(BaseModel):
     silent: bool
 
 
-class TranscriptSegment(BaseModel):
-    start_sec: float | None
-    end_sec: float | None
-    text: str
-
-
 class AttentionLink(BaseModel):
     """Audio window -> most-attended video frame in the last audio->video cross-attention layer."""
 
@@ -39,7 +33,6 @@ class AttentionLink(BaseModel):
 class Evidence(BaseModel):
     frames: list[FrameEvidence] = []
     audio_windows: list[AudioWindowEvidence] = []
-    transcript: list[TranscriptSegment] = []
     attention_links: list[AttentionLink] = []
     note: str = (
         "Evidence lists the time-stamped inputs the model saw. Attention links show where audio "
@@ -68,8 +61,6 @@ class PredictionResult(BaseModel):
     probability_calibrated: bool
     confidence: float
     confidence_interpretation: str
-    audio_summary: str | None
-    visual_summary: str | None
     evidence: Evidence
     warnings: list[str]
     duration_sec: float

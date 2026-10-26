@@ -6,9 +6,8 @@ with frozen CLIP + CLAP features, so no config file is needed.
 Configuration is resolved in this order (later wins):
 
 1. Dataclass defaults below.
-2. Hardware-profile overrides (``hardware.profile``; ``auto`` picks one from detected VRAM).
-3. Values in an optional YAML file (``--config``; may inherit from a ``_base_`` file).
-4. Command-line ``--set section.key=value`` overrides.
+2. Values in an optional YAML file (``--config``; may inherit from a ``_base_`` file).
+3. Command-line ``--set section.key=value`` overrides.
 
 Unknown keys raise an error so typos never silently fall back to defaults.
 """
@@ -57,16 +56,19 @@ class PreprocessConfig:
 class EncoderConfig:
     # "clip" | "handcrafted"
     video: str = "clip"
-    video_model_name: str = "openai/clip-vit-base-patch32"
+    # Encoders run once per clip during feature extraction, where FFmpeg decoding (CPU) dominates on a
+    # Kaggle T4/P100, so the largest towers cost little there. Inference reruns them: ~1 GB of VRAM in
+    # fp16 on a local GPU, but ~20 s per video on a laptop CPU. ViT-L/14 is the strongest CLIP image tower;
+    # openai/clip-vit-base-patch16 is ~4x cheaper with somewhat lower accuracy.
+    video_model_name: str = "openai/clip-vit-large-patch14"
     # "clap" | "handcrafted"
     audio: str = "clap"
-    audio_model_name: str = "laion/clap-htsat-unfused"
+    # HTSAT-base CLAP trained on general audio, music and speech (laion/clap-htsat-unfused is the
+    # smaller HTSAT-tiny model trained mostly on sound events).
+    audio_model_name: str = "laion/larger_clap_general"
     # True: never download weights; they must already be in the local HF cache.
     local_files_only: bool = True
     batch_size: int = 32
-    # Optional Whisper transcription (used only for evidence / audio_summary, never as the audio encoder).
-    transcribe: bool = False
-    whisper_model_name: str = "openai/whisper-small"
 
 
 @dataclass
@@ -92,36 +94,26 @@ class ModelConfig:
 
 @dataclass
 class TrainingConfig:
-    # "cached": train fusion layers on pre-extracted frozen features.
-    # "end_to_end": decode videos on the fly and optionally fine-tune encoders (experimental).
-    mode: str = "cached"
+    """Trains the fusion model on cached frozen-encoder features; checkpoints are chosen on val macro-F1."""
+
     seed: int = 42
     device: str = "auto"
     batch_size: int = 32
     num_workers: int = 0
-    epochs: int = 30
-    max_steps: int | None = None
+    # Cross-attention models can sit at chance for many epochs before learning, so patience is generous;
+    # training on cached features is cheap.
+    epochs: int = 60
     lr: float = 3e-4
-    encoder_lr: float = 1e-5
     weight_decay: float = 0.01
     warmup_ratio: float = 0.05
-    # "cosine" | "linear" | "constant"
-    scheduler: str = "cosine"
     grad_clip: float = 1.0
-    grad_accum_steps: int = 1
     amp: bool = True
-    early_stopping_patience: int = 6
-    monitor: str = "macro_f1"
+    early_stopping_patience: int = 15
     # "auto": inverse-frequency weights only if majority/minority ratio > imbalance_threshold; "none"; "balanced".
     class_weighting: str = "auto"
     imbalance_threshold: float = 1.5
-    label_smoothing: float = 0.0
     checkpoint_dir: str = "output/checkpoints"
-    log_dir: str = "output/runs"
-    save_every_epochs: int = 1
     max_nan_steps: int = 10
-    freeze_encoders: bool = True
-    unfreeze_last_n_layers: int = 0
 
 
 @dataclass
@@ -143,14 +135,7 @@ class InferenceConfig:
     uncertain_high: float = 0.65
     max_upload_mb: float = 100.0
     allowed_extensions: list[str] = field(default_factory=lambda: [".mp4", ".mov", ".mkv", ".webm", ".avi"])
-    return_attention: bool = True
     ood_zscore_threshold: float = 3.0
-
-
-@dataclass
-class HardwareConfig:
-    # "auto" | "low_memory" | "standard_gpu" | "experimental" | "none"
-    profile: str = "none"
 
 
 @dataclass
@@ -163,7 +148,6 @@ class Config:
     training: TrainingConfig = field(default_factory=TrainingConfig)
     evaluation: EvaluationConfig = field(default_factory=EvaluationConfig)
     inference: InferenceConfig = field(default_factory=InferenceConfig)
-    hardware: HardwareConfig = field(default_factory=HardwareConfig)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -175,29 +159,6 @@ class Config:
             "encoders": {k: v for k, v in asdict(self.encoders).items() if k not in ("batch_size", "local_files_only")},
         }
         return hashlib.sha1(json.dumps(relevant, sort_keys=True).encode()).hexdigest()[:12]
-
-
-# Overrides applied on top of defaults when a hardware profile is selected.
-PROFILES: dict[str, dict[str, Any]] = {
-    "low_memory": {
-        "preprocess": {"num_frames": 8, "max_audio_windows": 32},
-        "model": {"hidden_dim": 128, "num_layers": 1, "fusion_dim": 64, "fusion_rank": 4},
-        "training": {"batch_size": 8, "grad_accum_steps": 4, "amp": True, "freeze_encoders": True},
-        "encoders": {"batch_size": 8},
-    },
-    "standard_gpu": {
-        "preprocess": {"num_frames": 16, "max_audio_windows": 64},
-        "model": {"hidden_dim": 256, "num_layers": 2, "fusion_dim": 128},
-        "training": {"batch_size": 32, "grad_accum_steps": 1, "amp": True, "freeze_encoders": True},
-        "encoders": {"batch_size": 32},
-    },
-    "experimental": {
-        "preprocess": {"num_frames": 32, "max_audio_windows": 128},
-        "model": {"hidden_dim": 384, "num_layers": 3, "fusion_dim": 192, "fusion_rank": 8},
-        "training": {"batch_size": 16, "grad_accum_steps": 2, "amp": True},
-        "encoders": {"batch_size": 32},
-    },
-}
 
 
 def _merge_into(obj: Any, updates: dict[str, Any], path: str = "", strict: bool = True) -> None:
@@ -252,29 +213,12 @@ def parse_overrides(overrides: list[str] | None) -> dict[str, Any]:
     return result
 
 
-def resolve_profile(name: str) -> str:
-    if name != "auto":
-        return name
-    from av_contradiction.utils.device import recommend_profile
-
-    return recommend_profile()
-
-
 def build_config(raw: dict[str, Any] | None = None, overrides: list[str] | None = None, strict: bool = True) -> Config:
     """``strict=False`` drops unknown keys in ``raw`` with a warning (used for stored checkpoint configs);
     CLI overrides are always strict."""
-    raw = copy.deepcopy(raw or {})
-    cli = parse_overrides(overrides)
-    requested = cli.get("hardware", {}).get("profile") or raw.get("hardware", {}).get("profile", "none")
-    profile = resolve_profile(requested)
     cfg = Config()
-    if profile not in ("none", None):
-        if profile not in PROFILES:
-            raise ValueError(f"Unknown hardware profile '{profile}'. Options: {sorted(PROFILES)} or auto/none")
-        _merge_into(cfg, PROFILES[profile])
-    _merge_into(cfg, raw, strict=strict)
-    _merge_into(cfg, cli)
-    cfg.hardware.profile = profile
+    _merge_into(cfg, copy.deepcopy(raw or {}), strict=strict)
+    _merge_into(cfg, parse_overrides(overrides))
     validate_config(cfg)
     return cfg
 
@@ -282,13 +226,6 @@ def build_config(raw: dict[str, Any] | None = None, overrides: list[str] | None 
 def load_config(path: str | Path | None = None, overrides: list[str] | None = None) -> Config:
     raw = _load_yaml_with_base(Path(path)) if path else {}
     return build_config(raw, overrides)
-
-
-def config_from_dict(data: dict[str, Any]) -> Config:
-    """Rebuild a Config from ``Config.to_dict()`` output (e.g. stored in a checkpoint)."""
-    data = copy.deepcopy(data)
-    data.setdefault("hardware", {})["profile"] = "none"
-    return build_config(data, strict=False)
 
 
 def validate_config(cfg: Config) -> None:
@@ -301,10 +238,6 @@ def validate_config(cfg: Config) -> None:
         raise ValueError("model.fusion must be 'tensor' or 'concat'")
     if m.alignment not in ("timestamp", "global"):
         raise ValueError("model.alignment must be 'timestamp' or 'global'")
-    if cfg.training.mode not in ("cached", "end_to_end"):
-        raise ValueError("training.mode must be 'cached' or 'end_to_end'")
-    if cfg.training.scheduler not in ("cosine", "linear", "constant"):
-        raise ValueError("training.scheduler must be cosine|linear|constant")
     if cfg.training.class_weighting not in ("auto", "none", "balanced"):
         raise ValueError("training.class_weighting must be auto|none|balanced")
     if cfg.encoders.video not in ("clip", "handcrafted") or cfg.encoders.audio not in ("clap", "handcrafted"):
@@ -340,11 +273,8 @@ __all__ = [
     "TrainingConfig",
     "EvaluationConfig",
     "InferenceConfig",
-    "HardwareConfig",
-    "PROFILES",
     "load_config",
     "build_config",
-    "config_from_dict",
     "parse_overrides",
     "save_config",
     "replace_section",

@@ -34,13 +34,9 @@ def sinusoidal_time_encoding(ts: torch.Tensor, dim: int, max_period_sec: float =
 
 
 class TemporalProximityBias(nn.Module):
-    def __init__(self, init_sigma_sec: float = 1.0, learnable: bool = True) -> None:
+    def __init__(self, init_sigma_sec: float = 1.0) -> None:
         super().__init__()
-        log_sigma = torch.tensor(math.log(init_sigma_sec))
-        if learnable:
-            self.log_sigma = nn.Parameter(log_sigma)
-        else:
-            self.register_buffer("log_sigma", log_sigma)
+        self.log_sigma = nn.Parameter(torch.tensor(math.log(init_sigma_sec)))
 
     @property
     def sigma(self) -> torch.Tensor:

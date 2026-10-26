@@ -12,10 +12,11 @@ import shutil
 import subprocess
 import urllib.request
 
+from av_contradiction.config import EncoderConfig
 from av_contradiction.utils.device import environment_report
 from av_contradiction.utils.reproducibility import package_versions
 
-HF_MODELS = ("openai/clip-vit-base-patch32", "laion/clap-htsat-unfused", "openai/whisper-small")
+HF_MODELS = (EncoderConfig.video_model_name, EncoderConfig.audio_model_name)
 
 
 def ffmpeg_status() -> dict:
@@ -48,8 +49,8 @@ def main() -> None:
     args = ap.parse_args()
 
     report = environment_report()
-    report["packages"] = package_versions(("torch", "numpy", "scikit-learn", "transformers", "imageio-ffmpeg", "streamlit", "tensorboard"))
-    report["optional"] = {m: importlib.util.find_spec(m) is not None for m in ("transformers", "streamlit", "tensorboard")}
+    report["packages"] = package_versions(("torch", "numpy", "scikit-learn", "transformers", "imageio-ffmpeg", "streamlit"))
+    report["optional"] = {m: importlib.util.find_spec(m) is not None for m in ("transformers", "streamlit")}
     report["ffmpeg"] = ffmpeg_status()
     usage = shutil.disk_usage(".")
     report["disk_free_gb"] = round(usage.free / 1024**3, 1)
@@ -66,7 +67,6 @@ def main() -> None:
     print(f"Python {report['python']} | torch {report['torch']} | CUDA available: {report['cuda_available']}")
     for g in report["gpus"]:
         print(f"  GPU {g['index']}: {g['name']} ({g['memory_gb']} GB)")
-    print(f"Recommended hardware profile: {report['recommended_profile']}")
     print(f"FFmpeg: {report['ffmpeg'].get('version') or report['ffmpeg'].get('error')}")
     print(f"Free disk (cwd): {report['disk_free_gb']} GB")
     print("Optional packages:", ", ".join(f"{k}={'yes' if v else 'no'}" for k, v in report["optional"].items()))

@@ -130,3 +130,15 @@ def test_collate_padding_masks():
     assert b["audio_mask"].tolist() == [[True] * 3, [False] * 3]
     assert b["video_mask"].tolist() == [[True, True, False, False], [True] * 4]
     assert b["video"][0, 2:].abs().sum() == 0
+
+
+def test_extraction_records_failures_and_keeps_going(mini_dataset, tmp_path):
+    from av_contradiction.config import replace_section
+    from av_contradiction.data.features import cache_path, extract_manifest
+
+    cfg = replace_section(mini_dataset["cfg"], data={"feature_cache_dir": str(tmp_path / "cache")})
+    rows = mini_dataset["rows"][:3] + [{"sample_id": "missing", "video_path": "nope.mp4", "label": "consistent"}]
+    report = extract_manifest(cfg, rows, "cpu", decode_workers=2)
+    assert report["extracted"] == 3 and list(report["failed"]) == ["missing"]
+    assert all(cache_path(cfg, r["sample_id"]).exists() for r in rows[:3])
+    assert extract_manifest(cfg, rows, "cpu")["skipped"] == 3  # cached clips are not re-extracted

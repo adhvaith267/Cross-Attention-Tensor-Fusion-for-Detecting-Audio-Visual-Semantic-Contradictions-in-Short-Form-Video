@@ -27,7 +27,7 @@ def test_dashboard_renders_prediction(trained_checkpoint, mini_dataset):
         spec = importlib.util.spec_from_file_location("dash", app_path)
         dash = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(dash)
-        res, clip, _ = dash.run_local(ckpt, "cpu", Path(video))
+        res, clip = dash.run_local(ckpt, "cpu", Path(video))
         dash.show_result("test", res, clip)
 
     video = Path(mini_dataset["cfg"].data.root_dir) / mini_dataset["rows"][0]["video_path"]
@@ -35,3 +35,4 @@ def test_dashboard_renders_prediction(trained_checkpoint, mini_dataset):
     at.run()
     assert not at.exception, at.exception
     assert any("Contradiction score" in m.label for m in at.metric)
+    assert any("least visual support" in m.value for m in at.markdown)

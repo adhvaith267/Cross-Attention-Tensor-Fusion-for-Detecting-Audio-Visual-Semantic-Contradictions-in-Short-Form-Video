@@ -22,5 +22,5 @@ def compute_class_weights(labels: np.ndarray, num_classes: int, mode: str = "aut
     return torch.tensor(w / w.mean(), dtype=torch.float32)
 
 
-def build_loss(class_weights: torch.Tensor | None = None, label_smoothing: float = 0.0) -> nn.Module:
-    return nn.CrossEntropyLoss(weight=class_weights, label_smoothing=label_smoothing)
+def build_loss(class_weights: torch.Tensor | None = None) -> nn.Module:
+    return nn.CrossEntropyLoss(weight=class_weights)

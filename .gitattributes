@@ -1,0 +1,5 @@
+# Normalise line endings so clones behave the same on Windows, Linux (Kaggle) and macOS.
+* text=auto eol=lf
+*.bat text eol=crlf
+*.pt binary
+*.png binary

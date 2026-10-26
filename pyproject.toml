@@ -8,7 +8,6 @@ version = "0.1.0"
 description = "Cross-attention tensor fusion for detecting audio-visual semantic contradictions in short-form video."
 readme = "README.md"
 requires-python = ">=3.10"
-license = { text = "MIT" }
 dependencies = [
     "torch>=2.2",
     "numpy>=1.24",
@@ -20,11 +19,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# Pretrained encoders (CLIP, CLAP, Whisper). Weights are NOT downloaded unless
+# Pretrained encoders (CLIP, CLAP). Weights are NOT downloaded unless
 # encoders.local_files_only is set to false.
 encoders = ["transformers>=4.40", "safetensors>=0.4"]
 dashboard = ["streamlit>=1.32"]
-logging = ["tensorboard>=2.14"]
 dev = ["pytest>=7.4", "ruff>=0.4"]
 
 [tool.setuptools.packages.find]

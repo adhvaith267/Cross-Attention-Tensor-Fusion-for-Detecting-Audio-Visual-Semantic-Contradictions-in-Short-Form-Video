@@ -1,8 +1,6 @@
 """Per-window audio encoders: ``float32 [T_a, samples]`` waveform windows -> ``[T_a, D]``.
 
-These encode the acoustic signal directly (speech, music, environmental sound). Whisper
-transcription (``inference/transcription.py``) is an optional add-on for evidence, never a
-replacement, because transcripts discard non-speech information.
+They encode the acoustic signal directly (speech, music, environmental sound) and are always frozen.
 """
 
 from __future__ import annotations
@@ -37,21 +35,15 @@ def mel_filterbank(n_fft: int, n_mels: int, sample_rate: int, fmin: float = 0.0,
 
 
 class AudioEncoder(nn.Module):
-    name: str = "base"
     dim: int = 0
     sample_rate: int = 16000
 
     def prepare(self, windows: np.ndarray) -> dict[str, torch.Tensor]:
         raise NotImplementedError
 
-    def unfreeze_last_n(self, n: int) -> list[nn.Parameter]:
-        return []
-
 
 class HandcraftedAudioEncoder(AudioEncoder):
     """Parameter-free log-mel statistics (mean and std over time of 40 mel bands). Tests/sanity only."""
-
-    name = "handcrafted"
 
     def __init__(self, sample_rate: int = 16000, n_mels: int = 40, n_fft: int = 512, hop: int = 160) -> None:
         super().__init__()
@@ -77,7 +69,6 @@ class HandcraftedAudioEncoder(AudioEncoder):
 class CLAPAudioEncoder(AudioEncoder):
     """LAION-CLAP audio tower via ``transformers`` (expects 48 kHz audio)."""
 
-    name = "clap"
     sample_rate = 48000
 
     def __init__(self, model_name: str, local_files_only: bool = True) -> None:
@@ -113,15 +104,6 @@ class CLAPAudioEncoder(AudioEncoder):
             emb = getattr(out, "audio_embeds", None)
             out = emb if emb is not None else out.pooler_output
         return out
-
-    def unfreeze_last_n(self, n: int) -> list[nn.Parameter]:
-        if n <= 0:
-            return []
-        layers = self.model.audio_model.audio_encoder.layers[-n:]
-        params = [p for layer in layers for p in layer.parameters()] + list(self.model.audio_projection.parameters())
-        for p in params:
-            p.requires_grad_(True)
-        return params
 
 
 def build_audio_encoder(enc: EncoderConfig, pre: PreprocessConfig) -> AudioEncoder:

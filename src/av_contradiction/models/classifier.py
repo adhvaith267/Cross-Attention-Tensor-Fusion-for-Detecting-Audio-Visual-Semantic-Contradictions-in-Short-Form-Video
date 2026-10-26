@@ -1,4 +1,4 @@
-"""Full audio-visual contradiction model and an end-to-end wrapper with encoders.
+"""Audio-visual contradiction model over pre-extracted (frozen) encoder features.
 
 Data flow (B batch; Ta audio windows; Tv frames; D = hidden_dim):
 
@@ -97,49 +97,10 @@ class AVContradictionModel(nn.Module):
             if return_attention:
                 out["attn_a2v"] = x["attn_a2v"]
                 out["attn_v2a"] = x["attn_v2a"]
-        fused = self.fusion(pooled)
-        out["logits"] = self.head(fused)
-        out["fused"] = fused
+        out["logits"] = self.head(self.fusion(pooled))
         return out
 
 
-def build_model(cfg: ModelConfig, audio_dim: int, video_dim: int) -> AVContradictionModel:
-    return AVContradictionModel(cfg, audio_dim, video_dim)
+def count_parameters(module: nn.Module) -> int:
+    return sum(p.numel() for p in module.parameters())
 
-
-def count_parameters(module: nn.Module, trainable_only: bool = False) -> int:
-    return sum(p.numel() for p in module.parameters() if p.requires_grad or not trainable_only)
-
-
-class EndToEndModel(nn.Module):
-    """Encoders + fusion model for ``training.mode=end_to_end`` (optional encoder fine-tuning).
-
-    Batches carry per-sample *prepared* encoder inputs (lists); features are computed here,
-    padded and passed to the fusion model, so gradients reach any unfrozen encoder layers.
-    """
-
-    def __init__(self, video_encoder: nn.Module, audio_encoder: nn.Module, fusion_model: AVContradictionModel) -> None:
-        super().__init__()
-        self.video_encoder, self.audio_encoder, self.fusion_model = video_encoder, audio_encoder, fusion_model
-
-    @staticmethod
-    def _pad(seqs: list[torch.Tensor], dim: int, device: torch.device) -> tuple[torch.Tensor, torch.Tensor]:
-        t = max(1, max(s.shape[0] for s in seqs))
-        x = torch.zeros(len(seqs), t, dim, device=device)
-        m = torch.zeros(len(seqs), t, dtype=torch.bool, device=device)
-        for i, s in enumerate(seqs):
-            x[i, : s.shape[0]] = s
-            m[i, : s.shape[0]] = True
-        return x, m
-
-    def forward(self, batch: dict[str, Any], return_attention: bool = False) -> dict[str, Any]:
-        device = batch["video_ts"].device
-        vfeats = [self.video_encoder(x.to(device)).float() for x in batch["video_inputs"]]
-        afeats = [self.audio_encoder(**{k: t.to(device) for k, t in inp.items()}).float() for inp in batch["audio_inputs"]]
-        video, video_mask = self._pad(vfeats, self.fusion_model.video_dim, device)
-        audio, audio_mask = self._pad(afeats, self.fusion_model.audio_dim, device)
-        feats = {
-            "video": video, "video_mask": video_mask & batch["video_mask"], "video_ts": batch["video_ts"],
-            "audio": audio, "audio_mask": audio_mask & batch["audio_mask"], "audio_ts": batch["audio_ts"],
-        }
-        return self.fusion_model(feats, return_attention)

@@ -28,7 +28,7 @@ def main() -> None:
         "split": res["split"], "n": m["n"], "macro_f1": m["macro_f1"], "macro_f1_ci95": res["macro_f1_ci95"],
         "accuracy": m["accuracy"], "roc_auc": m["roc_auc"], "pr_auc": m["pr_auc"], "ece": m["ece"], "brier": m["brier"],
         "temperature": res.get("temperature"), "confusion_matrix": m["confusion_matrix"],
-        "params_head": res["params_trainable_head"], "latency_ms_fusion_only": res["latency_ms_per_clip_fusion_only"],
+        "params": res["params"], "latency_ms_fusion_only": res["latency_ms_per_clip_fusion_only"],
         "peak_gpu_memory_mb": res["peak_gpu_memory_mb"], "warnings": res["warnings"],
     }, indent=2))
 

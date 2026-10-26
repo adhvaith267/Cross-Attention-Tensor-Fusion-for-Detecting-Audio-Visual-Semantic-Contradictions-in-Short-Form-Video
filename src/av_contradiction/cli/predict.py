@@ -1,6 +1,6 @@
 """Predict consistency/contradiction for one video.
 
-Usage: python -m av_contradiction.cli.predict --video sample.mp4 --checkpoint output/checkpoints/default/best.pt [--transcribe] [--out pred.json]
+Usage: python -m av_contradiction.cli.predict --video sample.mp4 --checkpoint output/checkpoints/default/best.pt [--out pred.json]
 """
 
 from __future__ import annotations
@@ -16,11 +16,10 @@ def main() -> None:
     ap.add_argument("--video", required=True)
     ap.add_argument("--checkpoint", required=True)
     ap.add_argument("--device", default="auto")
-    ap.add_argument("--transcribe", action="store_true", help="Run Whisper (weights must be cached locally)")
     ap.add_argument("--out", default=None, help="Also write the JSON result here")
     ap.add_argument("--set", dest="overrides", action="append", default=[], metavar="KEY=VALUE")
     args = ap.parse_args()
-    pred = Predictor(args.checkpoint, args.device, args.overrides, transcribe=args.transcribe or None).predict(args.video)
+    pred = Predictor(args.checkpoint, args.device, args.overrides).predict(args.video)
     text = pred.model_dump_json(indent=2)
     print(text)
     if args.out:

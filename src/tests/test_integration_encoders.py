@@ -16,7 +16,7 @@ pytestmark = pytest.mark.integration
 
 def _cfg():
     return build_config({"encoders": {"video": "clip", "audio": "clap", "local_files_only": True},
-                         "preprocess": {"num_frames": 4, "audio_sample_rate": 48000}, "hardware": {"profile": "none"}})
+                         "preprocess": {"num_frames": 4, "audio_sample_rate": 48000}})
 
 
 @pytest.fixture(scope="module")
@@ -51,5 +51,8 @@ def test_real_file_through_clip_clap(extractor, tmp_path):
 
     path = Path(tmp_path) / "c.mp4"
     render_clip(path, ((200, 30, 30), (30, 30, 200)), (440.0, 880.0), seg_sec=2.0, size=128, sample_rate=48000)
-    feats, clip = extractor.extract(path)
+    from av_contradiction.data.preprocessing import decode_clip
+
+    clip = decode_clip(path, extractor.cfg.preprocess)
+    feats = extractor.encode(clip)
     assert feats["video"].shape[0] == 4 and feats["audio"].shape[0] >= 1

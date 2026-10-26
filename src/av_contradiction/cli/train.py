@@ -29,7 +29,7 @@ def main() -> None:
         cfg = replace_section(cfg, model=PRESETS[args.preset])
         cfg.experiment_name = f"{cfg.experiment_name}/{args.preset}"
     result = train_from_config(cfg, resume=args.resume, preset=args.preset or "custom")
-    print(f"stopped: {result.stopped_reason} | epochs: {result.epochs_run} | best {cfg.training.monitor}: {result.best_metric} "
+    print(f"stopped: {result.stopped_reason} | epochs: {result.epochs_run} | best val macro-F1: {result.best_metric} "
           f"(epoch {result.best_epoch}) | best checkpoint: {result.best_checkpoint}")
 
 
