@@ -39,12 +39,43 @@ python -m av_contradiction.cli.check_environment
 FFmpeg ships with `imageio-ffmpeg`. Weights are only downloaded by `download_encoders` (or with
 `--set encoders.local_files_only=false`); after that everything runs offline.
 
+## Where everything lives
+
+| what | where | how it gets there |
+|---|---|---|
+| code, tests, notebook, dataset manifest (`manifests/`), released models (`models/`) | **GitHub** (this repo) | `git push` |
+| the 2,600 AVID-Bench videos (4.9 GB) | **private Kaggle Dataset** (name containing `avid`) and `data/avid/` locally, never GitHub | `prepare_avid download` once, then upload the zip to Kaggle once |
+| training run | **Kaggle Notebook** from `notebooks/kaggle_train.ipynb` | import the notebook, attach the dataset |
+| trained model | `models/<name>/` locally, then GitHub | unzip `best_model.zip` from the notebook output, commit |
+| CLIP + CLAP weights (2.5 GB) | Hugging Face cache on each machine | `download_encoders` locally; the notebook downloads them on Kaggle |
+
+## Dataset: AVID-Bench subset
+
+[`manifests/avid_subset.csv`](manifests/avid_subset.csv) lists a verified 4.9 GB subset of
+[AVID-Bench](https://github.com/czx1220/AVID-bench): 2,600 segments forming 1,300 matched pairs (the
+same clip with its original audio = `consistent`, and with injected inconsistent audio =
+`contradictory`) from 1,300 different source videos, in leakage-safe train (2,000) / val (300) /
+test (300) splits; the test split comes only from AVID's official test set. Labels, selection and
+verification are documented in [`manifests/AVID_SUBSET.md`](manifests/AVID_SUBSET.md).
+
+```bash
+pip install -e ".[avid]"
+python -m av_contradiction.cli.prepare_avid download   # exactly the manifest's files into data/avid/ (resumable, checksummed)
+python -m av_contradiction.cli.prepare_avid verify     # decode + label + leakage checks
+```
+
 ## Train on Kaggle (free GPU)
 
-`notebooks/kaggle_train.ipynb` does the whole run: clone this repo, download AVHBench, build
-leakage-safe splits, extract features, train every model variant over 3 seeds, pick the best on
-**validation** macro-F1, report it once on **test**, and zip it for download. Import the notebook,
-set *Accelerator → GPU* and *Internet → On*, then *Save Version → Save & Run All*.
+1. **Upload the videos once.** Zip `data/avid/` (command in
+   [`AVID_SUBSET.md`](manifests/AVID_SUBSET.md#use-on-kaggle)), then on kaggle.com *Datasets → New
+   Dataset*: upload the zip, name it e.g. `avid-subset`, keep it **private**.
+2. **Create the notebook.** *Code → New Notebook → File → Import Notebook*:
+   `notebooks/kaggle_train.ipynb`. *Add Input* → your `avid-subset` dataset. *Settings*:
+   Accelerator **GPU**, Internet **On**.
+3. **Run it.** *Save Version → Save & Run All*. It clones this repo, checks the dataset, extracts
+   CLIP + CLAP features, trains every model variant over 3 seeds, picks the best on **validation**
+   macro-F1, reports it once on **test**, and writes `best_model.zip` to the *Output* tab.
+4. **Bring the model home.** Unzip `best_model.zip` into `models/<name>/` and commit it.
 
 It fits comfortably in Kaggle's free tier (~30 GPU-h/week, 12 h sessions, 16 GB GPU):
 
@@ -61,9 +92,10 @@ card, e.g. an RTX 4050 laptop GPU, works). On a CPU-only laptop they take ~20 s 
 
 ## Use a trained model
 
-Released models live in `models/<name>/` and are committed to the repo, so after installing you can
-predict straight away without training. To release your own, unzip the notebook's `best_model.zip`
-into `models/<name>/` and commit it (see [`models/README.md`](models/README.md)).
+Released models live in `models/<name>/` and are committed to the repo, so once one is released you
+can predict straight after installing, without training. No model has been released yet. To release
+one, unzip the notebook's `best_model.zip` into `models/<name>/` and commit it (see
+[`models/README.md`](models/README.md)).
 
 ```bash
 streamlit run src/av_contradiction/serving/dashboard.py                                     # dashboard
@@ -79,11 +111,6 @@ A manifest is a CSV with `sample_id, video_path, label` (`consistent` / `contrad
 optionally `split` and `group_id`. Splits are made per group, so a clip and anything derived from it
 never land in different splits. `prepare_dataset` also converts AVHBench and builds VGGSound
 within-category audio swaps.
-
-**AVID-Bench subset (recommended):** [`manifests/avid_subset.csv`](manifests/avid_subset.csv) is a
-verified 4.9 GB subset of AVID-Bench: 2,600 matched consistent/injected segment pairs over 1,300
-source videos, with leakage-safe splits. `python -m av_contradiction.cli.prepare_avid download`
-fetches exactly those files; see [`manifests/AVID_SUBSET.md`](manifests/AVID_SUBSET.md).
 
 ```bash
 python -m av_contradiction.cli.prepare_dataset split --manifest my.csv --out data/manifests/manifest.csv
@@ -133,8 +160,9 @@ first-run test numbers had been seen, so this is not a fully blind result.
 
 ## Limitations
 
-* No public dataset has true semantic-contradiction labels. AVHBench's AV-matching labels and
-  constructed audio swaps are proxies and may contain shortcuts.
+* No public dataset has naturally occurring semantic-contradiction labels. AVID-Bench's
+  contradictions are synthetic audio injections, a proxy that may contain editing shortcuts; a high
+  `audio_only` score would reveal them.
 * Frames are encoded one at a time by an image model; motion is seen only through the frame sequence.
 * Sarcasm, off-screen sound and background music are not modelled.
 * Attention weights and "least visual support" moments are hints, not explanations.
@@ -142,8 +170,9 @@ first-run test numbers had been seen, so this is not a fully blind result.
 
 ## Third-party licenses and responsible use
 
-CLAP is Apache-2.0. OpenAI's CLIP model card limits CLIP to research use. AVHBench states
-no license; VGGSound annotations are CC BY 4.0, and the videos remain their uploaders' copyright.
+CLAP is Apache-2.0. OpenAI's CLIP model card limits CLIP to research use. AVID-Bench is
+Apache-2.0 per its dataset card; AVHBench states no license; VGGSound annotations are CC BY 4.0. In
+all three, the videos remain their YouTube uploaders' copyright, which is why they are not in this repo.
 Do not redistribute YouTube-derived videos. This is not a misinformation, deception or deepfake
 detector, and its outputs must not be used to label people or content as deceptive.
 
