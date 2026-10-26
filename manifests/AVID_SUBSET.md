@@ -117,7 +117,7 @@ python -c "import zipfile,pathlib as p; r=p.Path('data/avid'); z=zipfile.ZipFile
 ```
 
 On kaggle.com: *Datasets → New Dataset*, upload `avid_subset.zip`, name it e.g. `avid-subset`
-(the name must contain `avid`), keep it **private**. In `notebooks/kaggle_train.ipynb` attach it with
+keep it **private**. In `notebooks/kaggle_train.ipynb` attach it with
 *Add Input*; the notebook finds it under `/kaggle/input/` and uses it as `data.root_dir`.
 
 **Option B: download on Kaggle.** With *Internet → On*: `pip install -e ".[avid]"` and

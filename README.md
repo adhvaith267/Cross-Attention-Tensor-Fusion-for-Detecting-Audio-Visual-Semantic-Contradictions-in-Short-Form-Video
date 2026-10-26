@@ -44,7 +44,7 @@ FFmpeg ships with `imageio-ffmpeg`. Weights are only downloaded by `download_enc
 | what | where | how it gets there |
 |---|---|---|
 | code, tests, notebook, dataset manifest (`manifests/`), released models (`models/`) | **GitHub** (this repo) | `git push` |
-| the 2,600 AVID-Bench videos (4.9 GB) | **private Kaggle Dataset** (name containing `avid`) and `data/avid/` locally, never GitHub | `prepare_avid download` once, then upload the zip to Kaggle once |
+| the 2,600 AVID-Bench videos (4.9 GB) | **private Kaggle Dataset** and `data/avid/` locally, never GitHub | `prepare_avid download` once, then upload the zip to Kaggle once |
 | training run | **Kaggle Notebook** from `notebooks/kaggle_train.ipynb` | import the notebook, attach the dataset |
 | trained model | `models/<name>/` locally, then GitHub | unzip `best_model.zip` from the notebook output, commit |
 | CLIP + CLAP weights (2.5 GB) | Hugging Face cache on each machine | `download_encoders` locally; the notebook downloads them on Kaggle |
@@ -68,7 +68,7 @@ python -m av_contradiction.cli.prepare_avid verify     # decode + label + leakag
 
 1. **Upload the videos once.** Zip `data/avid/` (command in
    [`AVID_SUBSET.md`](manifests/AVID_SUBSET.md#use-on-kaggle)), then on kaggle.com *Datasets → New
-   Dataset*: upload the zip, name it e.g. `avid-subset`, keep it **private**.
+   Dataset*: upload the zip, name it e.g. `avid-subset`, keep it **private**, and wait until Kaggle finishes processing it.
 2. **Create the notebook.** *Code → New Notebook → File → Import Notebook*:
    `notebooks/kaggle_train.ipynb`. *Add Input* → your `avid-subset` dataset. *Settings*:
    Accelerator **GPU**, Internet **On**.
