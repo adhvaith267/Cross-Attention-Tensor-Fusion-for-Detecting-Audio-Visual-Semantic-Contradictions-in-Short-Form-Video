@@ -1,5 +1,7 @@
 # Normalise line endings so clones behave the same on Windows, Linux (Kaggle) and macOS.
 * text=auto eol=lf
 *.bat text eol=crlf
+# csv.writer emits CRLF; keep those bytes so manifest hashes match on every OS
+*.csv text eol=crlf
 *.pt binary
 *.png binary
