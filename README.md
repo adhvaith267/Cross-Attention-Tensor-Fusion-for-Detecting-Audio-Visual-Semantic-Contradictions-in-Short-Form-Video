@@ -80,6 +80,11 @@ optionally `split` and `group_id`. Splits are made per group, so a clip and anyt
 never land in different splits. `prepare_dataset` also converts AVHBench and builds VGGSound
 within-category audio swaps.
 
+**AVID-Bench subset (recommended):** [`manifests/avid_subset.csv`](manifests/avid_subset.csv) is a
+verified 4.9 GB subset of AVID-Bench: 2,600 matched consistent/injected segment pairs over 1,300
+source videos, with leakage-safe splits. `python -m av_contradiction.cli.prepare_avid download`
+fetches exactly those files; see [`manifests/AVID_SUBSET.md`](manifests/AVID_SUBSET.md).
+
 ```bash
 python -m av_contradiction.cli.prepare_dataset split --manifest my.csv --out data/manifests/manifest.csv
 python -m av_contradiction.cli.audit_dataset --manifest data/manifests/manifest.csv --probe

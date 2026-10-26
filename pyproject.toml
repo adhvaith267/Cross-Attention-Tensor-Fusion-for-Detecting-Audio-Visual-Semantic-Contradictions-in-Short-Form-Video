@@ -23,6 +23,8 @@ dependencies = [
 # encoders.local_files_only is set to false.
 encoders = ["transformers>=4.40", "safetensors>=0.4"]
 dashboard = ["streamlit>=1.32"]
+# Official AVID-Bench download host (cli.prepare_avid).
+avid = ["modelscope>=1.40"]
 dev = ["pytest>=7.4", "ruff>=0.4"]
 
 [tool.setuptools.packages.find]
