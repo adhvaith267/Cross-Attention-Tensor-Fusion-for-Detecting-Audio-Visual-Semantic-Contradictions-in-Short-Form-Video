@@ -136,6 +136,9 @@ class InferenceConfig:
     max_upload_mb: float = 100.0
     allowed_extensions: list[str] = field(default_factory=lambda: [".mp4", ".mov", ".mkv", ".webm", ".avi"])
     ood_zscore_threshold: float = 3.0
+    # Speech-to-text for the dashboard's optional transcript (multilingual; ~290 MB, downloaded by
+    # `download_encoders --asr`). openai/whisper-small is more accurate and ~3x larger.
+    asr_model_name: str = "openai/whisper-base"
 
 
 @dataclass

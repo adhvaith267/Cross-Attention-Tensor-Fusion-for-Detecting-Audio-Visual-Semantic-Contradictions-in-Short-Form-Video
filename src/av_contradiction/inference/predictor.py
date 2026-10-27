@@ -49,6 +49,8 @@ class Predictor:
             self.temperature = float(cal_data["temperature"])
             self.calibration_degenerate = bool(cal_data.get("at_bound", False))
         self.feature_stats: dict[str, Any] = self.ckpt.get("feature_stats") or {}
+        # Encoder features of the most recent predict_clip call (used by the dashboard's text view).
+        self.last_features: dict[str, Any] | None = None
 
     def info(self) -> ModelInfo:
         return ModelInfo(
@@ -84,6 +86,7 @@ class Predictor:
         timing["decode_ms"] = (time.perf_counter() - t0) * 1000
         t1 = time.perf_counter()
         feats = self.extractor.encode(clip)
+        self.last_features = feats
         timing["encode_ms"] = (time.perf_counter() - t1) * 1000
         t2 = time.perf_counter()
         batch = move_batch(collate_features([{**feats, "label": 0, "sample_id": "input"}]), self.device)

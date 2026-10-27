@@ -29,6 +29,22 @@ def load_predictor(checkpoint: str, device: str):
     return Predictor(checkpoint, device)
 
 
+@st.cache_resource(show_spinner="Loading the CLIP + CLAP text encoders...")
+def load_text_encoders(checkpoint: str, device: str):
+    from av_contradiction.inference.text_analysis import TextEncoders
+
+    pred = load_predictor(checkpoint, device)
+    return TextEncoders(pred.cfg, pred.device)
+
+
+@st.cache_resource(show_spinner="Loading Whisper...")
+def load_transcriber(checkpoint: str, device: str):
+    from av_contradiction.inference.text_analysis import Transcriber
+
+    pred = load_predictor(checkpoint, device)
+    return Transcriber(pred.cfg, pred.device)
+
+
 def find_checkpoints() -> list[str]:
     """Released models (models/) first, then local training runs (output/checkpoints/)."""
     found: list[str] = []
@@ -108,6 +124,39 @@ def show_result(title: str, res: PredictionResult, clip) -> None:
             st.table([a.model_dump() for a in res.evidence.attention_links])
 
 
+def visual_match(rank: int) -> str:
+    return "visible" if rank <= 10 else "unclear" if rank <= 40 else "not visible"
+
+
+def show_text_view(ta) -> None:
+    """Zero-shot words for what the frames show and the audio sounds like, plus the optional transcript."""
+    st.subheader("Text view: what is seen and what is heard")
+    st.caption("Zero-shot tags: the same frozen CLIP / CLAP features the model uses, compared with short captions of "
+               "everyday concepts. Shares are relative among the concepts. Explanations only; they do not change the verdict.")
+    left, right = st.columns(2)
+    with left:
+        st.markdown("**Seen in the frames (CLIP)**")
+        st.table([{"concept": t.concept, "share": round(t.score, 2)} for t in ta.seen] or [{"concept": "(no frames)"}])
+    with right:
+        st.markdown("**Heard in the audio (CLAP)**")
+        st.table([{"concept": t.concept, "share": round(t.score, 2)} for t in ta.heard] or [{"concept": "(silence)"}])
+    if ta.cross_checks:
+        st.markdown("**Is what is heard or said visible?**")
+        st.table([{"phrase": c.phrase, "from": c.source, "visual rank": f"{c.visual_rank} of {c.n_concepts}",
+                   "visual match": visual_match(c.visual_rank)} for c in ta.cross_checks])
+        st.caption("Each phrase is looked up in the frames: rank 1 means it is the best-matching concept (visible: top 10, "
+                   "unclear: top 40). A sound whose source is 'not visible' hints at a contradiction, but the source may "
+                   "simply be off screen.")
+    if ta.transcript is not None:
+        st.markdown("**Transcript (Whisper)**")
+        st.write(ta.transcript or "(no speech recognised)")
+        if ta.keywords:
+            st.write("Keywords:", ", ".join(f"{w} ({n})" for w, n in ta.keywords))
+    with st.expander("Seen and heard over time"):
+        st.table(ta.seen_timeline)
+        st.table(ta.heard_timeline)
+
+
 def main() -> None:
     st.title("Audio-Visual Semantic Contradiction Detector")
     st.caption(
@@ -128,6 +177,9 @@ def main() -> None:
         ckpt2 = None
         if compare:
             ckpt2 = st.selectbox("Comparison checkpoint", found) if found else st.text_input("Comparison checkpoint path")
+        text_view = st.checkbox("Text view: what is seen and heard, in words", value=True)
+        transcribe = st.checkbox("Transcribe speech (Whisper)", value=False, disabled=not text_view,
+                                 help="Needs the Whisper weights: python -m av_contradiction.cli.download_encoders --asr")
 
     if not ckpt or not Path(ckpt).is_file():
         st.error("No checkpoint found. Train one first (see README: python -m av_contradiction.cli.train) or enter a valid path.")
@@ -165,6 +217,7 @@ def main() -> None:
     try:
         with st.status("Processing: decoding, encoding, predicting...", expanded=False) as status:
             res, clip = run_local(ckpt, device, tmp_path)
+            feats = load_predictor(ckpt, device).last_features
             results = [(f"Model: {Path(ckpt).parent.name}", res, clip)]
             if compare and ckpt2 and Path(ckpt2).is_file():
                 res2, clip2 = run_local(ckpt2, device, tmp_path)
@@ -174,10 +227,29 @@ def main() -> None:
         for col, (title, r, c) in zip(cols, results, strict=True):
             with col:
                 show_result(title, r, c)
+        if text_view:
+            show_text_analysis(ckpt, device, feats, clip, tmp_path, transcribe)
     except Exception as exc:
         st.error(f"Processing failed: {exc}")
     finally:
         tmp_path.unlink(missing_ok=True)
+
+
+def show_text_analysis(ckpt: str, device: str, feats, clip, video: Path, transcribe: bool) -> None:
+    from av_contradiction.inference.text_analysis import analyse
+
+    try:
+        text = load_text_encoders(ckpt, device)
+    except Exception as exc:
+        st.info(f"Text view unavailable: {exc}")
+        return
+    transcript = None
+    if transcribe:
+        try:
+            transcript = load_transcriber(ckpt, device)(video)
+        except Exception as exc:
+            st.warning(f"Transcription unavailable: {exc}")
+    show_text_view(analyse(feats, clip.frame_ts, clip.audio_ts, text, transcript))
 
 
 if __name__ == "__main__":  # streamlit runs the script as __main__

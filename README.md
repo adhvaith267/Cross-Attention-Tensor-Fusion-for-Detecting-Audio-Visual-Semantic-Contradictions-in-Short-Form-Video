@@ -63,6 +63,10 @@ looks at sampled frames and audio windows together and returns `consistent`, `co
   each audio window attended to, and the moments with the least visual support.
 - **Streamlit dashboard** with model picker, saved test metrics and a side-by-side comparison mode
   (for example against the `audio_only` baseline).
+- **Text view (media and text analytics).** CLIP and CLAP were trained on captions, so their features
+  can be read as words: zero-shot tags for what is **seen** in the frames and **heard** in the audio,
+  a check of whether each heard sound is visible, and an optional **Whisper speech transcript** with
+  keywords, each looked up in the frames. Explanations only; they do not change the verdict.
 - **Trained model included** in [`models/avid/`](models/avid): clone and predict, no training needed.
 - **Cheap training.** The large encoders are frozen; their features are computed once and cached, so
   only a ~3 M-parameter fusion model is trained, in minutes.
@@ -123,6 +127,7 @@ epochs with early stopping (patience 15) on validation macro-F1.
 | Language | Python 3.10+ |
 | Deep learning | PyTorch 2.2+ |
 | Pretrained encoders | Hugging Face Transformers (CLIP, CLAP), safetensors |
+| Text analytics | CLIP / CLAP text towers (zero-shot tags), Whisper speech-to-text, keyword extraction |
 | Media | FFmpeg via `imageio-ffmpeg` (no system install needed) |
 | Evaluation | scikit-learn, NumPy, Matplotlib |
 | Config and schemas | dataclasses + YAML (`--config`, `--set key=value`), Pydantic |
@@ -147,7 +152,7 @@ epochs with early stopping (patience 15) on validation macro-F1.
 │   │   ├── models/           # encoders, cross-attention, tensor fusion, classifier, baselines
 │   │   ├── training/         # trainer (AMP, early stopping, checkpoints)
 │   │   ├── evaluation/       # metrics, calibration, ablations, best-model export
-│   │   ├── inference/        # Predictor: video file -> PredictionResult
+│   │   ├── inference/        # Predictor: video file -> PredictionResult; text view (tags, transcript)
 │   │   ├── serving/          # Streamlit dashboard
 │   │   ├── cli/              # all command-line entry points
 │   │   └── utils/
@@ -182,7 +187,7 @@ Then the project, the encoder weights (one-off, ~2.5 GB) and a self-check:
 
 ```bash
 pip install -e ".[encoders,dashboard]"          # add ,dev for tests and ruff; ,avid to download the dataset
-python -m av_contradiction.cli.download_encoders
+python -m av_contradiction.cli.download_encoders   # add --asr for the dashboard's speech transcript (~290 MB)
 python -m av_contradiction.cli.check_environment   # Python, torch, CUDA/GPU, FFmpeg, cached weights
 ```
 
@@ -203,9 +208,25 @@ Open the URL it prints (usually <http://localhost:8501>), then:
 2. Optionally tick **Comparison mode** and pick a second checkpoint to run side by side.
 3. **Upload** a short video and click **Analyze**.
 
-You get the verdict, the calibrated score, warnings (for example silent audio or inputs unlike the
+Tick **Text view** (on by default) and optionally **Transcribe speech** in the sidebar for the text
+analysis described below. You get the verdict, the calibrated score, warnings (for example silent audio or inputs unlike the
 training data), the moments with the least visual support, the sampled frames with timestamps, the audio
 windows, the cross-attention links and the model's saved test metrics.
+
+**Text view.** Below the verdict the dashboard describes the clip in words:
+
+| part | how it works |
+|---|---|
+| Seen in the frames | the CLIP frame features compared with captions such as *"a photo of a whale"* for ~145 everyday concepts |
+| Heard in the audio | the CLAP audio features compared with captions such as *"the sound of a boat engine"* for ~100 sounds |
+| Is what is heard or said visible? | each heard sound and each transcript keyword is looked up in the frames with CLIP and ranked against all visual concepts (visible: top 10; not visible: below 40) |
+| Transcript (optional) | speech-to-text with Whisper (`openai/whisper-base`), then keyword extraction (stopwords removed, word counts) |
+| Seen and heard over time | the top concept for every frame and every audio window |
+
+Example from the AVID test set (injected audio): seen *a whale, a boat, ocean waves*; heard *a woman
+speaking*. For a make-up tutorial with contradicting narration, Whisper's transcript reads *"take a
+bright blue eyeshadow and apply it all over your cheeks"* while the frames show an orange eye look.
+The transcript needs the Whisper weights once: `python -m av_contradiction.cli.download_encoders --asr`.
 
 ### Command line
 
@@ -382,7 +403,7 @@ All command-line tools:
 | command | purpose |
 |---|---|
 | `check_environment` | report Python, torch, CUDA, FFmpeg and cached weights |
-| `download_encoders` | download CLIP + CLAP weights once |
+| `download_encoders` | download CLIP + CLAP weights once (`--asr`: also Whisper) |
 | `prepare_avid select / download / verify` | build, fetch and verify the AVID subset |
 | `prepare_dataset` | make splits; convert AVHBench; build VGGSound audio swaps |
 | `make_synthetic_benchmark` | offline synthetic sanity data |
