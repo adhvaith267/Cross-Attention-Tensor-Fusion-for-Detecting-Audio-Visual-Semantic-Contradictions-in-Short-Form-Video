@@ -6,7 +6,7 @@
 
 A violin playing over a visible guitar, or a narrator describing a red car over a blue one: the model
 looks at sampled frames and audio windows together and returns `consistent`, `contradictory` or
-`uncertain`, a calibrated score, and the moments with the least visual support.
+`uncertain`, a calibrated score, and model attention signals for inspection.
 
 [![Python](https://img.shields.io/badge/python-3.10%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.2%2B-EE4C2C?logo=pytorch&logoColor=white)](https://pytorch.org/)
@@ -19,13 +19,6 @@ looks at sampled frames and audio windows together and returns `consistent`, `co
 [![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-D7FF64?logo=ruff&logoColor=black)](https://docs.astral.sh/ruff/)
 
 </div>
-
-> [!IMPORTANT]
-> One trained model is included: **`models/avid/`** was trained on AVID-Bench, whose contradictions are
-> synthetic audio edits; it scores 0.95 there, but audio alone already scores 0.96, so it detects
-> *edited audio* and is at chance on natural mismatches. Neither has been validated on naturally occurring
-> contradictions, and the proposed cross-attention fusion has not yet beaten simple concatenation.
-> See [Results](#results).
 
 ## Table of contents
 
@@ -60,14 +53,14 @@ looks at sampled frames and audio windows together and returns `consistent`, `co
   `consistent` / `contradictory` / `uncertain` with a temperature-calibrated contradiction score.
 - **Time-aware fusion.** Bidirectional audio↔video cross-attention with timestamp encodings, a
   temporal-proximity bias and a learned "no visual match" token, followed by low-rank tensor fusion.
-- **Evidence, not just a label.** The sampled frames with timestamps, every audio window, the frame
-  each audio window attended to, and the moments with the least visual support.
-- **Streamlit analytics dashboard** with one tab per stage of the pipeline (dataset, preprocessing,
-  feature extraction, text mining, model and attention, evaluation).
+- **Evidence, not just a label.** The sampled frames with timestamps, every audio window, model
+  attention signals, and human-readable similarity hints.
+- **Streamlit analytics dashboard** with an upload-first flow: verdict, input preprocessing, what is
+  seen/heard, model signals, technical feature patterns, and dataset information.
 - **Text view (media and text analytics).** CLIP and CLAP were trained on captions, so their features
   can be read as words: zero-shot tags for what is **seen** in the frames and **heard** in the audio,
-  a check of whether each heard sound is visible, and an optional **Whisper speech transcript** with
-  keywords, each looked up in the frames. Explanations only; they do not change the verdict.
+  relative similarity hints for what is **seen** and **heard**, and an optional **Whisper speech transcript**
+  with keywords compared against the frames. These are explanations only; they do not change the verdict.
 - **One trained model included** ([`models/`](models)): clone and predict, no training needed.
 - **Cheap training.** The large encoders are frozen; their features are computed once and cached, so
   only a ~3 M-parameter fusion model is trained, in minutes.
@@ -204,27 +197,26 @@ After this everything runs offline.
 streamlit run src/av_contradiction/serving/dashboard.py
 ```
 
-Open the URL it prints (usually <http://localhost:8501>). In the sidebar pick the **device**. Upload a short video and press
+Open the URL it prints (usually <http://localhost:8501>). Upload a short video and press
 **Analyze**. The speech transcript runs automatically when the Whisper weights are present
 (`download_encoders --asr`).
 
 | tab | what it shows |
 |---|---|
-| **Overview** | the verdict of the AVID model (label, calibrated contradiction score, warnings), and a one-line summary of what is seen, heard and said |
-| **Dataset** | the training data: clips per split and label, contradiction types, and full dataset documentation (no upload needed) |
-| **Preprocessing** | duration, the decoding steps and their settings, the 16 sampled frames with timestamps, the waveform and the loudness of every 2 s audio window (silent windows greyed) |
-| **Feature extraction** | encoder names and feature sizes, frame-to-frame and audio-to-audio similarity heatmaps, 2-D PCA trajectories of the embeddings over time |
-| **Text mining** | zero-shot seen / heard tags, the Whisper transcript with keywords highlighted, keyword frequencies, whether each heard sound or spoken keyword is visible, tags over time |
-| **Model & attention** | architecture, parameters and fusion type, and the audio→video cross-attention heatmap when available |
-| **Evaluation** | test metrics of the released model (no upload needed) |
+| **Overview** | the uploaded filename, duration, verdict, calibrated contradiction score, confidence, warnings, and a plain-language summary |
+| **Input & preprocessing** | the decoding settings, sampled frames, timestamps, waveform, audio-window loudness, and silence flags from the uploaded video |
+| **What is seen/heard** | CLIP/CLAP similarity hints, the optional Whisper transcript, keywords, visual similarity checks, and tags over time |
+| **Model signals** | the selected model's architecture, parameters, fusion configuration, top attention signals, and attention heatmap for the uploaded video |
+| **Feature patterns** | encoder outputs, frame/audio similarity heatmaps, and optional PCA diagnostics; intended for technical inspection |
+| **Dataset** | training-data split and label summaries; this is the only section available before a video is uploaded |
 
 **Text mining in detail:**
 
 | part | how it works |
 |---|---|
-| Seen in the frames | the CLIP frame features compared with captions such as *"a photo of a whale"* for ~145 everyday concepts |
-| Heard in the audio | the CLAP audio features compared with captions such as *"the sound of a boat engine"* for ~100 sounds |
-| Is what is heard or said visible? | each heard sound and each transcript keyword is looked up in the frames with CLIP and ranked against all visual concepts (visible: top 10; not visible: below 40) |
+| Seen in the frames | the CLIP frame features compared with captions such as *"a photo of a whale"* for ~145 everyday concepts; these are relative similarity hints, not object-detection confidence |
+| Heard in the audio | the CLAP audio features compared with captions such as *"the sound of a boat engine"* for ~100 sounds; these are similarity hints, not guaranteed sound identifications |
+| Does the visual content resemble what was heard or said? | each heard sound and transcript keyword is compared with the frames using CLIP; an off-screen source can still be valid |
 | Transcript | speech-to-text with Whisper (`openai/whisper-base`), then keyword extraction (stopwords removed, word counts) |
 | Seen and heard over time | the top concept for every frame and every audio window |
 
@@ -563,7 +555,7 @@ ruff check src
   shortcuts that need no video at all.
 - Frames are encoded one at a time by an image model; motion is seen only through the frame sequence.
 - Sarcasm, off-screen sound and background music are not modelled.
-- Attention weights and "least visual support" moments are hints, not explanations.
+- Attention weights and high-null-attention moments are inspection hints, not explanations.
 - Calibration is fitted on validation data and does not transfer to very different videos.
 
 ## Third-party licenses and responsible use
