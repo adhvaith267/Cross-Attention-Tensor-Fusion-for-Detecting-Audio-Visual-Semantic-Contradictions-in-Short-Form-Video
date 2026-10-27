@@ -23,8 +23,9 @@ looks at sampled frames and audio windows together and returns `consistent`, `co
 > [!IMPORTANT]
 > The included model was trained on a 2,600-clip subset of AVID-Bench, where the contradictions are
 > **synthetic audio edits**. There, audio alone already scores 0.96 macro-F1 and the fusion models do
-> not beat it, so the model mainly detects *edited audio*. It has not been validated on naturally
-> occurring contradictions. See [Results](#results).
+> not beat it, so the model mainly detects *edited audio*. On the audio-swap benchmark (natural audio,
+> no shortcut) it scores at chance; there the best model reaches ~0.68 macro-F1 and the proposed
+> cross-attention fusion does not beat simple concatenation. See [Results](#results).
 
 ## Table of contents
 
@@ -459,8 +460,45 @@ What this shows:
   should not be expected to transfer to unedited real-world videos. A benchmark whose contradictions
   cannot be found from one modality alone is needed for that.
 
-**Audio-swap benchmark** ([above](#audio-swap-benchmark-no-audio-shortcut)): not run yet. It is
-the test of whether the audio-video fusion itself works; results will be added here.
+**Audio-swap benchmark** ([above](#audio-swap-benchmark-no-audio-shortcut); natural audio, no
+single-modality shortcut). 1,257 original AVID clips after dropping 38 mostly-silent clips and 5
+without a same-length partner; test = 288 clips (144 own audio, 144 another clip's audio); 3 seeds;
+same features, presets and selection rule as above; Kaggle 2× T4, 15 min:
+
+| preset | macro-F1 | ROC-AUC | params |
+|---|---|---|---|
+| majority | 0.333 | 0.500 | 0 |
+| similarity (ridge audio→video map + cosine, no training of the fusion model) | 0.677 | **0.747** | 0 |
+| audio_only | 0.484 ± 0.017 | 0.498 ± 0.004 | 0.31 M |
+| video_only | 0.489 ± 0.016 | 0.500 ± 0.000 | 0.38 M |
+| **concat** | **0.684 ± 0.022** | 0.730 ± 0.028 | 0.61 M |
+| tensor_no_xattn | 0.616 ± 0.040 | 0.665 ± 0.015 | 0.81 M |
+| xattn_concat | 0.566 ± 0.079 | 0.603 ± 0.086 | 2.79 M |
+| xattn_tensor_global | 0.630 ± 0.014 | 0.674 ± 0.022 | 3.12 M |
+| xattn_tensor (proposed) | 0.424 ± 0.073 | 0.503 ± 0.003 | 3.19 M |
+
+Extra tests on the same 288 test clips:
+
+| model | test set | macro-F1 | ROC-AUC |
+|---|---|---|---|
+| best swap model (`concat` seed 3, picked on validation) | random swaps | 0.665 (95% CI 0.611–0.716) | – |
+| same model | hard swaps (partner audio most similar to the clip's own) | 0.661 (95% CI 0.604–0.715) | 0.692 |
+| released AVID model (`models/avid/`) | random swaps | 0.377 (accuracy 0.500) | 0.494 |
+| released AVID model | hard swaps | 0.363 (accuracy 0.493) | 0.496 |
+
+What this shows:
+- **The benchmark works as designed:** `audio_only` and `video_only` sit at chance, so any score above
+  0.5 comes from comparing audio with video.
+- **There is a real but modest cross-modal signal:** the best models reach ~0.68 macro-F1 on natural
+  audio. Hard swaps (similar-sounding partners) are about as hard as random ones.
+- **The released AVID model is at chance here** (ROC-AUC 0.49): it learned to spot edited audio, not
+  to compare audio with video, confirming the AVID caveat.
+- **The proposed fusion does not help on this data.** Plain concatenation is best and a parameter-free
+  similarity baseline is close behind (best ROC-AUC). `xattn_tensor` never left chance in any of the 3
+  seeds (validation macro-F1 stayed ≤ 0.48 until early stopping), and `xattn_concat` learned in 2 of 3
+  seeds only after ~20 epochs, so the cross-attention models are hard to optimise with this schedule
+  and ~1,000 training pairs. Its timestamp-free variant `xattn_tensor_global` does learn (0.630). All
+  learning models overfit early (validation loss rises after ~10 epochs).
 
 **Synthetic sanity benchmark** (handcrafted encoders, 60 test clips, 3 seeds): test macro-F1 was
 `xattn_concat` 0.994 ± 0.010, `xattn_tensor` 0.978 ± 0.010, `concat` 0.728, `audio_only` 0.525,
@@ -510,6 +548,8 @@ ruff check src
 
 ## Limitations
 
+- On natural audio (audio-swap benchmark) the best model reaches only ~0.68 macro-F1, and the
+  cross-attention variants are unstable to train on ~1,000 pairs.
 - No public dataset has naturally occurring semantic-contradiction labels. AVID-Bench's
   contradictions are synthetic audio injections, and the 0.96 `audio_only` score shows they contain
   shortcuts that need no video at all.
