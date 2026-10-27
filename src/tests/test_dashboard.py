@@ -18,7 +18,7 @@ def test_dashboard_loads_with_checkpoint(trained_checkpoint, monkeypatch):
 
 
 def test_dashboard_renders_prediction(trained_checkpoint, mini_dataset):
-    """Render a real prediction through the dashboard's result view (AppTest cannot simulate uploads)."""
+    """Render a real prediction through the dashboard's verdict view (AppTest cannot simulate uploads)."""
 
     def script(app_path: str, ckpt: str, video: str) -> None:
         import importlib.util
@@ -28,7 +28,7 @@ def test_dashboard_renders_prediction(trained_checkpoint, mini_dataset):
         dash = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(dash)
         res, clip = dash.run_local(ckpt, "cpu", Path(video))
-        dash.show_result("test", res, clip)
+        dash.render_verdict("test", res)
 
     video = Path(mini_dataset["cfg"].data.root_dir) / mini_dataset["rows"][0]["video_path"]
     at = st_testing.AppTest.from_function(script, args=(APP, str(trained_checkpoint), str(video)), default_timeout=120)
@@ -36,3 +36,38 @@ def test_dashboard_renders_prediction(trained_checkpoint, mini_dataset):
     assert not at.exception, at.exception
     assert any("Contradiction score" in m.label for m in at.metric)
     assert any("least visual support" in m.value for m in at.markdown)
+
+
+def test_dashboard_all_tabs_with_two_models(trained_checkpoint, mini_dataset):
+    """Analyse one clip with two models and render every tab. The tiny test model uses handcrafted encoders,
+    so the text-mining tab must explain that it is unavailable instead of failing."""
+
+    def script(app_path: str, ckpt: str, video: str) -> None:
+        import importlib.util
+        from pathlib import Path
+
+        import streamlit as st
+
+        spec = importlib.util.spec_from_file_location("dash", app_path)
+        dash = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(dash)
+        a = dash.analyse_upload(Path(video), ckpt, ckpt, "cpu", transcribe=False)
+        pred = dash.load_predictor(ckpt, "cpu")
+        dash.tab_overview(a)
+        dash.tab_dataset()
+        dash.tab_preprocessing(a, pred)
+        dash.tab_features(a, pred)
+        dash.tab_text(a)
+        dash.tab_model(a, "cpu")
+        dash.tab_evaluation()
+        st.write("DONE")
+
+    video = Path(mini_dataset["cfg"].data.root_dir) / mini_dataset["rows"][0]["video_path"]
+    at = st_testing.AppTest.from_function(script, args=(APP, str(trained_checkpoint), str(video)), default_timeout=180)
+    at.run()
+    assert not at.exception, at.exception
+    assert sum("Contradiction score" in m.label for m in at.metric) == 2
+    assert any("Model comparison" in m.value for m in at.markdown)
+    assert any("Text mining unavailable" in i.value for i in at.info)
+    assert any("Audio → video cross-attention" in m.value for m in at.markdown)
+    assert any(m.value == "DONE" for m in at.markdown)

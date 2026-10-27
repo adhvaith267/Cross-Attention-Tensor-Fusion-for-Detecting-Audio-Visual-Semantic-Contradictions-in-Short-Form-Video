@@ -87,31 +87,36 @@ def test_dashboard_renders_text_view():
         spec.loader.exec_module(dash)
         ta = analyse(_feats("a whale", "a dog barking"), np.arange(4.0), np.array([[0, 2], [1, 3], [2, 4]], float),
                      FakeText(), transcript="a dog on a boat")
-        dash.show_text_view(ta)
+        dash.render_text_mining(ta)
 
     at = st_testing.AppTest.from_function(script, args=(APP,), default_timeout=60)
     at.run()
     assert not at.exception, at.exception
-    assert any("what is seen and what is heard" in s.value for s in at.subheader)
+    assert any("what is seen, heard and said" in s.value for s in at.subheader)
     assert any("Is what is heard or said visible" in m.value for m in at.markdown)
 
 
 def test_text_view_reports_unavailable_for_non_clip_models(trained_checkpoint, mini_dataset):
-    """The tiny test model uses handcrafted encoders: the dashboard must say so instead of failing."""
+    """The tiny test model uses handcrafted encoders: the text mining must say so instead of failing."""
 
     def script(app_path: str, ckpt: str, video: str) -> None:
         import importlib.util
         from pathlib import Path
+
+        import streamlit as st
 
         spec = importlib.util.spec_from_file_location("dash", app_path)
         dash = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(dash)
         res, clip = dash.run_local(ckpt, "cpu", Path(video))
         feats = dash.load_predictor(ckpt, "cpu").last_features
-        dash.show_text_analysis(ckpt, "cpu", feats, clip, Path(video), transcribe=False)
+        ta, note = dash.text_analysis_for(ckpt, "cpu", feats, clip, Path(video), transcribe=False)
+        st.write("NONE" if ta is None else "TA")
+        st.info(note)
 
     video = Path(mini_dataset["cfg"].data.root_dir) / mini_dataset["rows"][0]["video_path"]
     at = st_testing.AppTest.from_function(script, args=(APP, str(trained_checkpoint), str(video)), default_timeout=120)
     at.run()
     assert not at.exception, at.exception
-    assert any("Text view unavailable" in i.value for i in at.info)
+    assert any(m.value == "NONE" for m in at.markdown)
+    assert any("Text mining unavailable" in i.value for i in at.info)

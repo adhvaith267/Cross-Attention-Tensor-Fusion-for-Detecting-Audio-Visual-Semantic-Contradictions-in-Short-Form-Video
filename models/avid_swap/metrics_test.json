@@ -1,0 +1,131 @@
+{
+  "checkpoint": "/kaggle/working/output/checkpoints/avid_swap/concat/seed3/best.pt",
+  "experiment_name": "avid_swap/concat/seed3",
+  "preset": "concat",
+  "split": "test",
+  "seed": 3,
+  "manifest_hash": "6573ae7a5a33c8f86a532fc8987ae36f172732bce2deaabe725d00ec4a3cd0a5",
+  "feature_hash": "93faecbfa08a",
+  "best_val_metric": 0.7064742376070208,
+  "best_epoch": 11,
+  "metrics_uncalibrated": {
+    "n": 288,
+    "accuracy": 0.6666666666666666,
+    "macro_precision": 0.6699449252557041,
+    "macro_recall": 0.6666666666666667,
+    "macro_f1": 0.6650513665439038,
+    "per_class": {
+      "consistent": {
+        "precision": 0.6463414634146342,
+        "recall": 0.7361111111111112,
+        "f1": 0.6883116883116883,
+        "support": 144
+      },
+      "contradictory": {
+        "precision": 0.6935483870967742,
+        "recall": 0.5972222222222222,
+        "f1": 0.6417910447761194,
+        "support": 144
+      }
+    },
+    "confusion_matrix": [
+      [
+        106,
+        38
+      ],
+      [
+        58,
+        86
+      ]
+    ],
+    "brier": 0.24641487002372742,
+    "ece": 0.16637762222025132,
+    "roc_auc": 0.7079957561728395,
+    "pr_auc": 0.6964828714361655
+  },
+  "macro_f1_ci95": {
+    "low": 0.610631782265776,
+    "high": 0.7162651195274996,
+    "level": 0.95,
+    "n_boot": 1000
+  },
+  "params": 611586,
+  "latency_ms_per_clip_fusion_only": 1.222014499998636,
+  "peak_gpu_memory_mb": 26.3173828125,
+  "device": "cuda",
+  "warnings": [],
+  "temperature": 2.30705565494239,
+  "temperature_at_bound": false,
+  "calibration_fit_split": "val",
+  "metrics_calibrated": {
+    "n": 288,
+    "accuracy": 0.6666666666666666,
+    "macro_precision": 0.6699449252557041,
+    "macro_recall": 0.6666666666666667,
+    "macro_f1": 0.6650513665439038,
+    "per_class": {
+      "consistent": {
+        "precision": 0.6463414634146342,
+        "recall": 0.7361111111111112,
+        "f1": 0.6883116883116883,
+        "support": 144
+      },
+      "contradictory": {
+        "precision": 0.6935483870967742,
+        "recall": 0.5972222222222222,
+        "f1": 0.6417910447761194,
+        "support": 144
+      }
+    },
+    "confusion_matrix": [
+      [
+        106,
+        38
+      ],
+      [
+        58,
+        86
+      ]
+    ],
+    "brier": 0.22038044035434723,
+    "ece": 0.03645483569966422,
+    "roc_auc": 0.7079957561728395,
+    "pr_auc": 0.6964828714361655
+  },
+  "metrics": {
+    "n": 288,
+    "accuracy": 0.6666666666666666,
+    "macro_precision": 0.6699449252557041,
+    "macro_recall": 0.6666666666666667,
+    "macro_f1": 0.6650513665439038,
+    "per_class": {
+      "consistent": {
+        "precision": 0.6463414634146342,
+        "recall": 0.7361111111111112,
+        "f1": 0.6883116883116883,
+        "support": 144
+      },
+      "contradictory": {
+        "precision": 0.6935483870967742,
+        "recall": 0.5972222222222222,
+        "f1": 0.6417910447761194,
+        "support": 144
+      }
+    },
+    "confusion_matrix": [
+      [
+        106,
+        38
+      ],
+      [
+        58,
+        86
+      ]
+    ],
+    "brier": 0.22038044035434723,
+    "ece": 0.03645483569966422,
+    "roc_auc": 0.7079957561728395,
+    "pr_auc": 0.6964828714361655
+  },
+  "report_dir": "/kaggle/working/output/reports/avid_swap/concat/seed3"
+}

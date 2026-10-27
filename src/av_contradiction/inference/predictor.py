@@ -49,8 +49,10 @@ class Predictor:
             self.temperature = float(cal_data["temperature"])
             self.calibration_degenerate = bool(cal_data.get("at_bound", False))
         self.feature_stats: dict[str, Any] = self.ckpt.get("feature_stats") or {}
-        # Encoder features of the most recent predict_clip call (used by the dashboard's text view).
+        # Encoder features and audio->video attention [Ta, 1 + Tv] (column 0: "no match" token) of the most
+        # recent predict_clip call, for the dashboard's feature and attention views.
         self.last_features: dict[str, Any] | None = None
+        self.last_attention: np.ndarray | None = None
 
     def info(self) -> ModelInfo:
         return ModelInfo(
@@ -93,6 +95,8 @@ class Predictor:
         want_attn = self.model.cross is not None
         out = self.model(batch, return_attention=want_attn)
         timing["model_ms"] = (time.perf_counter() - t2) * 1000
+        maps = out.get("attn_a2v") or []
+        self.last_attention = maps[-1][0].float().cpu().numpy() if maps else None
         logits = out["logits"].float().cpu().numpy()
         probs = softmax(logits, self.temperature or 1.0)[0]
         p_con = float(probs[self.label_names.index("contradictory")])
