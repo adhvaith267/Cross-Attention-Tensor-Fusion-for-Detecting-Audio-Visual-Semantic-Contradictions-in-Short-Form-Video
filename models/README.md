@@ -17,7 +17,4 @@ Released here:
 
 | folder | model | trained on | test macro-F1 |
 |---|---|---|---|
-| `avid_swap/` | `concat` (default) | audio-swap benchmark: natural audio, each clip with its own and with another clip's audio | 0.665 |
 | `avid/` | `xattn_tensor_global` | AVID-Bench subset: original vs injected (edited) audio | 0.950 |
-
-`default.txt` names the folder the dashboard selects first.

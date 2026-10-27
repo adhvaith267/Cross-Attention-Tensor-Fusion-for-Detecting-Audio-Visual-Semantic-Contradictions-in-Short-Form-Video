@@ -14,16 +14,14 @@ looks at sampled frames and audio windows together and returns `consistent`, `co
 [![Streamlit](https://img.shields.io/badge/Streamlit-dashboard-FF4B4B?logo=streamlit&logoColor=white)](https://streamlit.io/)
 [![Kaggle](https://img.shields.io/badge/Kaggle-free%20GPU%20training-20BEFF?logo=kaggle&logoColor=white)](https://www.kaggle.com/)
 [![FFmpeg](https://img.shields.io/badge/FFmpeg-bundled-007808?logo=ffmpeg&logoColor=white)](https://ffmpeg.org/)
-[![Models](https://img.shields.io/badge/trained%20models-2%20included-success)](models)
+[![Models](https://img.shields.io/badge/trained%20models-1%20included-success)](models)
 [![Test macro-F1](https://img.shields.io/badge/AVID%20test%20macro--F1-0.950-blue)](#results)
 [![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-D7FF64?logo=ruff&logoColor=black)](https://docs.astral.sh/ruff/)
 
 </div>
 
 > [!IMPORTANT]
-> Two trained models are included. The **default, `models/avid_swap/`**, was trained on natural audio
-> swaps, where neither modality alone gives the answer away; it reaches 0.665 test macro-F1 by actually
-> comparing audio with video. **`models/avid/`** was trained on AVID-Bench, whose contradictions are
+> One trained model is included: **`models/avid/`** was trained on AVID-Bench, whose contradictions are
 > synthetic audio edits; it scores 0.95 there, but audio alone already scores 0.96, so it detects
 > *edited audio* and is at chance on natural mismatches. Neither has been validated on naturally occurring
 > contradictions, and the proposed cross-attention fusion has not yet beaten simple concatenation.
@@ -65,13 +63,12 @@ looks at sampled frames and audio windows together and returns `consistent`, `co
 - **Evidence, not just a label.** The sampled frames with timestamps, every audio window, the frame
   each audio window attended to, and the moments with the least visual support.
 - **Streamlit analytics dashboard** with one tab per stage of the pipeline (dataset, preprocessing,
-  feature extraction, text mining, model and attention, evaluation) and a side-by-side comparison of
-  two models (by default the mismatch detector and the edited-audio detector).
+  feature extraction, text mining, model and attention, evaluation).
 - **Text view (media and text analytics).** CLIP and CLAP were trained on captions, so their features
   can be read as words: zero-shot tags for what is **seen** in the frames and **heard** in the audio,
   a check of whether each heard sound is visible, and an optional **Whisper speech transcript** with
   keywords, each looked up in the frames. Explanations only; they do not change the verdict.
-- **Two trained models included** ([`models/`](models)): clone and predict, no training needed.
+- **One trained model included** ([`models/`](models)): clone and predict, no training needed.
 - **Cheap training.** The large encoders are frozen; their features are computed once and cached, so
   only a ~3 M-parameter fusion model is trained, in minutes.
 - **One-click Kaggle notebook** that extracts features, trains 7 variants × 3 seeds plus baselines,
@@ -144,11 +141,10 @@ epochs with early stopping (patience 15) on validation macro-F1.
 
 ```
 .
-├── models/                   # trained models shipped with the repo; default.txt names the dashboard's default
-│   ├── avid_swap/            #   mismatch detector, trained on natural audio swaps (default)
+├── models/                   # trained model shipped with the repo
 │   └── avid/                 #   edited-audio detector, trained on AVID-Bench
 ├── results/                  # benchmark tables of the Kaggle runs (shown in the dashboard)
-├── manifests/                # AVID subset and audio-swap manifests (CSV) and their documentation
+├── manifests/                # AVID subset manifest (CSV) and documentation
 ├── notebooks/
 │   ├── kaggle_train.ipynb    # end-to-end training on Kaggle (AVID subset)
 │   └── kaggle_swap.ipynb     # audio-swap benchmark: natural audio, no single-modality shortcut
@@ -208,21 +204,19 @@ After this everything runs offline.
 streamlit run src/av_contradiction/serving/dashboard.py
 ```
 
-Open the URL it prints (usually <http://localhost:8501>). In the sidebar pick the **main model**
-(default `models/avid_swap/`, set by `models/default.txt`), the model to **compare with** (default the
-edited-audio detector `models/avid/`, or none) and the **device**. Upload a short video and press
+Open the URL it prints (usually <http://localhost:8501>). In the sidebar pick the **device**. Upload a short video and press
 **Analyze**. The speech transcript runs automatically when the Whisper weights are present
 (`download_encoders --asr`).
 
 | tab | what it shows |
 |---|---|
-| **Overview** | the verdict of each model (label, calibrated contradiction score, warnings), a comparison table, and a one-line summary of what is seen, heard and said |
-| **Dataset** | the training data: clips per split and label, contradiction types, swap construction, full dataset documentation (no upload needed) |
+| **Overview** | the verdict of the AVID model (label, calibrated contradiction score, warnings), and a one-line summary of what is seen, heard and said |
+| **Dataset** | the training data: clips per split and label, contradiction types, and full dataset documentation (no upload needed) |
 | **Preprocessing** | duration, the decoding steps and their settings, the 16 sampled frames with timestamps, the waveform and the loudness of every 2 s audio window (silent windows greyed) |
 | **Feature extraction** | encoder names and feature sizes, frame-to-frame and audio-to-audio similarity heatmaps, 2-D PCA trajectories of the embeddings over time |
 | **Text mining** | zero-shot seen / heard tags, the Whisper transcript with keywords highlighted, keyword frequencies, whether each heard sound or spoken keyword is visible, tags over time |
-| **Model & attention** | architecture, parameters and fusion type of each model, and the audio→video cross-attention heatmap for models that have one |
-| **Evaluation** | test metrics of the released models, both benchmark tables, the cross-tests (no upload needed) |
+| **Model & attention** | architecture, parameters and fusion type, and the audio→video cross-attention heatmap when available |
+| **Evaluation** | test metrics of the released model (no upload needed) |
 
 **Text mining in detail:**
 
@@ -242,8 +236,8 @@ The transcript needs the Whisper weights once: `python -m av_contradiction.cli.d
 ### Command line
 
 ```bash
-python -m av_contradiction.cli.predict --video clip.mp4 --checkpoint models/avid_swap/best.pt
-python -m av_contradiction.cli.predict --video clip.mp4 --checkpoint models/avid_swap/best.pt --device cuda --out pred.json
+python -m av_contradiction.cli.predict --video clip.mp4 --checkpoint models/avid/best.pt
+python -m av_contradiction.cli.predict --video clip.mp4 --checkpoint models/avid/best.pt --device cuda --out pred.json
 ```
 
 Output (shortened):
@@ -264,7 +258,7 @@ Output (shortened):
 ```python
 from av_contradiction.inference.predictor import Predictor
 
-predictor = Predictor("models/avid_swap/best.pt", device="auto")
+predictor = Predictor("models/avid/best.pt", device="auto")
 result = predictor.predict("clip.mp4")
 print(result.label, round(result.contradiction_probability, 3))
 ```
@@ -490,12 +484,8 @@ same features, presets and selection rule as above; run 1 with the default sched
 | xattn_tensor_global | 0.630 ± 0.014 | 0.674 ± 0.022 | 3.12 M |
 | xattn_tensor (proposed) | 0.424 ± 0.073 | 0.503 ± 0.003 | 3.19 M |
 
-**Released mismatch detector** ([`models/avid_swap/`](models/avid_swap), the dashboard default):
-`concat` seed 3, picked on validation, test macro-F1 0.665 (95% CI 0.611–0.716). Re-checked on a CPU
-laptop on real files built with FFmpeg (one test clip's video with another test clip's audio, and the
-originals): 13 of 20 correct.
-
-Extra tests on the same 288 test clips:
+**Released edited-audio detector** ([`models/avid/`](models/avid)):
+trained on the AVID-Bench subset and reports test macro-F1 0.950.
 
 | model | test set | macro-F1 | ROC-AUC |
 |---|---|---|---|

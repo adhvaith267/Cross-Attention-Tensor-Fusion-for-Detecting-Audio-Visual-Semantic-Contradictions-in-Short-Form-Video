@@ -35,11 +35,11 @@ def test_dashboard_renders_prediction(trained_checkpoint, mini_dataset):
     at.run()
     assert not at.exception, at.exception
     assert any("Contradiction score" in m.label for m in at.metric)
-    assert any("least visual support" in m.value for m in at.markdown)
+    assert any("Model attention signals" in m.value for m in at.markdown)
 
 
-def test_dashboard_all_tabs_with_two_models(trained_checkpoint, mini_dataset):
-    """Analyse one clip with two models and render every tab. The tiny test model uses handcrafted encoders,
+def test_dashboard_all_tabs(trained_checkpoint, mini_dataset):
+    """Analyse one clip and render every tab. The tiny test model uses handcrafted encoders,
     so the text-mining tab must explain that it is unavailable instead of failing."""
 
     def script(app_path: str, ckpt: str, video: str) -> None:
@@ -51,7 +51,7 @@ def test_dashboard_all_tabs_with_two_models(trained_checkpoint, mini_dataset):
         spec = importlib.util.spec_from_file_location("dash", app_path)
         dash = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(dash)
-        a = dash.analyse_upload(Path(video), ckpt, ckpt, "cpu", transcribe=False)
+        a = dash.analyse_upload(Path(video), ckpt, "cpu", transcribe=False)
         pred = dash.load_predictor(ckpt, "cpu")
         dash.tab_overview(a)
         dash.tab_dataset()
@@ -66,8 +66,7 @@ def test_dashboard_all_tabs_with_two_models(trained_checkpoint, mini_dataset):
     at = st_testing.AppTest.from_function(script, args=(APP, str(trained_checkpoint), str(video)), default_timeout=180)
     at.run()
     assert not at.exception, at.exception
-    assert sum("Contradiction score" in m.label for m in at.metric) == 2
-    assert any("Model comparison" in m.value for m in at.markdown)
+    assert sum("Contradiction score" in m.label for m in at.metric) == 1
     assert any("Text mining unavailable" in i.value for i in at.info)
-    assert any("Audio → video cross-attention" in m.value for m in at.markdown)
+    assert any("Audio → video attention" in m.value for m in at.markdown)
     assert any(m.value == "DONE" for m in at.markdown)

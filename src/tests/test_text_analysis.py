@@ -92,8 +92,8 @@ def test_dashboard_renders_text_view():
     at = st_testing.AppTest.from_function(script, args=(APP,), default_timeout=60)
     at.run()
     assert not at.exception, at.exception
-    assert any("what is seen, heard and said" in s.value for s in at.subheader)
-    assert any("Is what is heard or said visible" in m.value for m in at.markdown)
+    assert any("What is seen, heard, and said" in s.value for s in at.subheader)
+    assert any("Does the visual content resemble what was heard or said" in m.value for m in at.markdown)
 
 
 def test_text_view_reports_unavailable_for_non_clip_models(trained_checkpoint, mini_dataset):
