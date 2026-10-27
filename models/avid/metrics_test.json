@@ -1,0 +1,131 @@
+{
+  "checkpoint": "/kaggle/working/output/checkpoints/avid/xattn_tensor_global/seed1/best.pt",
+  "experiment_name": "avid/xattn_tensor_global/seed1",
+  "preset": "xattn_tensor_global",
+  "split": "test",
+  "seed": 1,
+  "manifest_hash": "e9dda19b50d7c38b03be7d433b46245cf64faceb47e5331cffa7629e8527bed7",
+  "feature_hash": "93faecbfa08a",
+  "best_val_metric": 0.9533333333333334,
+  "best_epoch": 20,
+  "metrics_uncalibrated": {
+    "n": 300,
+    "accuracy": 0.95,
+    "macro_precision": 0.9500200008889284,
+    "macro_recall": 0.95,
+    "macro_f1": 0.9499994444382716,
+    "per_class": {
+      "consistent": {
+        "precision": 0.9530201342281879,
+        "recall": 0.9466666666666667,
+        "f1": 0.9498327759197325,
+        "support": 150
+      },
+      "contradictory": {
+        "precision": 0.9470198675496688,
+        "recall": 0.9533333333333334,
+        "f1": 0.9501661129568106,
+        "support": 150
+      }
+    },
+    "confusion_matrix": [
+      [
+        142,
+        8
+      ],
+      [
+        7,
+        143
+      ]
+    ],
+    "brier": 0.04889211803674698,
+    "ece": 0.05075381914774582,
+    "roc_auc": 0.9788222222222223,
+    "pr_auc": 0.9821929906459669
+  },
+  "macro_f1_ci95": {
+    "low": 0.9233319702132099,
+    "high": 0.9733285917496444,
+    "level": 0.95,
+    "n_boot": 1000
+  },
+  "params": 3119878,
+  "latency_ms_per_clip_fusion_only": 5.538836550022097,
+  "peak_gpu_memory_mb": 43.54443359375,
+  "device": "cuda",
+  "warnings": [],
+  "temperature": 2.6463818966151504,
+  "temperature_at_bound": false,
+  "calibration_fit_split": "val",
+  "metrics_calibrated": {
+    "n": 300,
+    "accuracy": 0.95,
+    "macro_precision": 0.9500200008889284,
+    "macro_recall": 0.95,
+    "macro_f1": 0.9499994444382716,
+    "per_class": {
+      "consistent": {
+        "precision": 0.9530201342281879,
+        "recall": 0.9466666666666667,
+        "f1": 0.9498327759197325,
+        "support": 150
+      },
+      "contradictory": {
+        "precision": 0.9470198675496688,
+        "recall": 0.9533333333333334,
+        "f1": 0.9501661129568106,
+        "support": 150
+      }
+    },
+    "confusion_matrix": [
+      [
+        142,
+        8
+      ],
+      [
+        7,
+        143
+      ]
+    ],
+    "brier": 0.04402841627597809,
+    "ece": 0.011821970144907611,
+    "roc_auc": 0.9788,
+    "pr_auc": 0.9821908382209865
+  },
+  "metrics": {
+    "n": 300,
+    "accuracy": 0.95,
+    "macro_precision": 0.9500200008889284,
+    "macro_recall": 0.95,
+    "macro_f1": 0.9499994444382716,
+    "per_class": {
+      "consistent": {
+        "precision": 0.9530201342281879,
+        "recall": 0.9466666666666667,
+        "f1": 0.9498327759197325,
+        "support": 150
+      },
+      "contradictory": {
+        "precision": 0.9470198675496688,
+        "recall": 0.9533333333333334,
+        "f1": 0.9501661129568106,
+        "support": 150
+      }
+    },
+    "confusion_matrix": [
+      [
+        142,
+        8
+      ],
+      [
+        7,
+        143
+      ]
+    ],
+    "brier": 0.04402841627597809,
+    "ece": 0.011821970144907611,
+    "roc_auc": 0.9788,
+    "pr_auc": 0.9821908382209865
+  },
+  "report_dir": "/kaggle/working/output/reports/avid/xattn_tensor_global/seed1"
+}

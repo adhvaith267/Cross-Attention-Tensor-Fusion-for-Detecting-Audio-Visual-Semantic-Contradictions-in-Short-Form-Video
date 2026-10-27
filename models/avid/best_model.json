@@ -1,0 +1,15 @@
+{
+  "preset": "xattn_tensor_global",
+  "seed": 1,
+  "selected_by": "validation macro_f1",
+  "val_macro_f1": 0.9533333333333334,
+  "test_macro_f1": 0.9499994444382716,
+  "test_macro_f1_ci95": {
+    "low": 0.9233319702132099,
+    "high": 0.9733285917496444,
+    "level": 0.95,
+    "n_boot": 1000
+  },
+  "test_accuracy": 0.95,
+  "source_checkpoint": "/kaggle/working/output/checkpoints/avid/xattn_tensor_global/seed1/best.pt"
+}

@@ -4,9 +4,10 @@ Give it a short video; it tells you whether what you **hear** is consistent with
 (a violin sound over a visible guitar, narration describing a red car over a blue one). It returns
 `consistent`, `contradictory` or `uncertain`, a calibrated score, and the timestamps it looked at.
 
-> **Status.** The pipeline (data tooling, training, evaluation, dashboard, Kaggle notebook) is
-> implemented and tested, but it has **only been trained on a synthetic sanity benchmark**. There
-> are no real-data results yet.
+> **Status.** Trained and evaluated on a 2,600-clip AVID-Bench subset (see [Results](#results)).
+> On that data the audio alone already reaches 0.96 macro-F1 and the fusion models do not beat it,
+> so the model mainly detects *edited audio*; it has not been validated on naturally occurring
+> contradictions.
 
 ## How it works
 
@@ -77,13 +78,16 @@ python -m av_contradiction.cli.prepare_avid verify     # decode + label + leakag
    macro-F1, reports it once on **test**, and writes `best_model.zip` to the *Output* tab.
 4. **Bring the model home.** Unzip `best_model.zip` into `models/<name>/` and commit it.
 
-It fits comfortably in Kaggle's free tier (~30 GPU-h/week, 12 h sessions, 16 GB GPU):
+It fits in Kaggle's free tier (~30 GPU-h/week, 12 h sessions). Measured on the AVID subset
+(2,600 clips, 2× T4): **2 h 54 min** in total.
 
-| step | cost | notes |
+| step | measured | notes |
 |---|---|---|
-| feature extraction | ~10 min per 1,000 clips | FFmpeg decoding (CPU) dominates: 1.4 s per 10 s clip per thread, 4 threads in parallel while the GPU encodes in fp16. Resumable: cached clips are skipped. |
-| 7 variants × 3 seeds | minutes | fusion models on cached features held in memory |
-| disk | ~70 KB per clip | features; well under the 20 GB output limit |
+| clone, install, dataset check | 1 min | |
+| audit (probes every video) | 15 min | |
+| feature extraction | 2 h 19 min (~3.2 s per clip) | FFmpeg decoding on Kaggle's few CPU cores dominates, not the GPU. Resumable: cached clips are skipped. |
+| 7 variants × 3 seeds + baselines | 18 min | fusion models on cached features held in memory |
+| output | 1.05 GB | features + checkpoints; `best_model.zip` is small |
 
 The large encoders cost little on Kaggle because decoding is the bottleneck. Inference runs the same
 encoders again, so a local NVIDIA GPU is recommended: they need ~1 GB of VRAM in fp16 (any 4 GB+
@@ -93,8 +97,9 @@ card, e.g. an RTX 4050 laptop GPU, works). On a CPU-only laptop they take ~20 s 
 ## Use a trained model
 
 Released models live in `models/<name>/` and are committed to the repo, so once one is released you
-can predict straight after installing, without training. No model has been released yet. To release
-one, unzip the notebook's `best_model.zip` into `models/<name>/` and commit it (see
+can predict straight after installing, without training. `models/avid/` holds the model trained
+on the AVID subset (read [Results](#results) for what it can and cannot do). To release another,
+unzip the notebook's `best_model.zip` into `models/<name>/` and commit it (see
 [`models/README.md`](models/README.md)).
 
 ```bash
@@ -152,17 +157,46 @@ preprocess: {audio_sample_rate: 16000, num_frames: 8, frame_size: 64}
 
 ## Results
 
-**Real data: none yet.** On the synthetic benchmark (handcrafted encoders, 60 test clips, 3 seeds),
-test macro-F1 was `xattn_concat` 0.994 ± 0.010, `xattn_tensor` 0.978 ± 0.010, `concat` 0.728,
-`audio_only` 0.525, `video_only` 0.498. Timestamp-aware cross-attention is what mattered there;
+**AVID-Bench subset** (test = 300 clips from AVID's official test split, 150 matched pairs; 3 seeds,
+mean ± std; CLIP ViT-L/14 + CLAP features; Kaggle run of 2026-10-27):
+
+| preset | macro-F1 | ROC-AUC | ECE | params |
+|---|---|---|---|---|
+| majority | 0.333 | 0.500 | – | 0 |
+| similarity (CLIP·CLAP cosine) | 0.563 | 0.634 | 0.113 | 0 |
+| **audio_only** | **0.960 ± 0.006** | **0.987 ± 0.002** | 0.020 | 0.31 M |
+| video_only | 0.490 ± 0.014 | 0.501 ± 0.001 | 0.005 | 0.38 M |
+| concat | 0.941 ± 0.008 | 0.983 ± 0.003 | 0.016 | 0.61 M |
+| tensor_no_xattn | 0.943 ± 0.012 | 0.980 ± 0.003 | 0.013 | 0.81 M |
+| xattn_concat | 0.946 ± 0.004 | 0.979 ± 0.002 | 0.016 | 2.79 M |
+| xattn_tensor_global | 0.946 ± 0.004 | 0.980 ± 0.002 | 0.018 | 3.12 M |
+| xattn_tensor (proposed) | 0.944 ± 0.005 | 0.977 ± 0.002 | 0.015 | 3.19 M |
+
+Released model (picked on validation macro-F1): `xattn_tensor_global` seed 1, test macro-F1
+0.950 (95% bootstrap CI 0.923–0.973).
+
+What this shows:
+* `video_only` is at chance, as it must be: both clips of a pair have identical video.
+* **`audio_only` is the best model.** The injected audio can be recognised without looking at
+  the video (editing artefacts, synthetic voices or sounds), so AVID mostly measures "was the audio
+  edited?". Every audio+video model is 1–2 points *below* audio-only; cross-attention and tensor
+  fusion bring no measurable gain here.
+* So these numbers do **not** show that the model understands audio-visual contradictions, and
+  they should not be expected to transfer to unedited real-world videos. A benchmark whose contradictions cannot be
+  found from one modality alone is needed for that.
+
+**Synthetic sanity benchmark** (handcrafted encoders, 60 test clips, 3 seeds): test macro-F1
+was `xattn_concat` 0.994 ± 0.010, `xattn_tensor` 0.978 ± 0.010, `concat` 0.728,
+`audio_only` 0.525, `video_only` 0.498. There, where only the audio-video pairing carries the
+label, timestamp-aware cross-attention is what mattered;
 tensor fusion gave no measurable gain over concatenation. The training schedule was changed after
 first-run test numbers had been seen, so this is not a fully blind result.
 
 ## Limitations
 
 * No public dataset has naturally occurring semantic-contradiction labels. AVID-Bench's
-  contradictions are synthetic audio injections, a proxy that may contain editing shortcuts; a high
-  `audio_only` score would reveal them.
+  contradictions are synthetic audio injections, and the 0.96 `audio_only` score shows they contain
+  shortcuts that need no video at all.
 * Frames are encoded one at a time by an image model; motion is seen only through the frame sequence.
 * Sarcasm, off-screen sound and background music are not modelled.
 * Attention weights and "least visual support" moments are hints, not explanations.
