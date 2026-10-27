@@ -7,6 +7,12 @@ Batch layout produced by ``collate_features`` (B batch, Ta/Tv = longest sequence
     label       long  [B]             sample_id list[str]
 
 Masks are True for real elements. A missing modality yields an all-False mask row.
+
+A row may name ``video_feature_id`` and ``audio_feature_id``: the cached features of other rows that
+supply its video and audio. This builds audio-swapped clips from cached features without writing new
+videos (see ``data/swaps.py``). Such a row keeps the video source's timeline (``video_ts`` and
+``audio_ts``) and takes only the audio embeddings and silence flags from the audio source, so the two
+sources must have the same number of audio windows.
 """
 
 from __future__ import annotations
@@ -29,13 +35,14 @@ class CachedFeatureDataset(Dataset):
 
     def __init__(self, cfg: Config, rows: list[Row]) -> None:
         self.label_to_id = {n: i for i, n in enumerate(cfg.data.label_names)}
-        self.items: list[tuple[Row, Path]] = []
+        self.items: list[tuple[Row, Path, Path]] = []
         self.missing: list[str] = []
         self._memory: dict[int, dict[str, Any]] = {}
+        self._files: dict[Path, dict[str, Any]] = {}
         for r in rows:
-            p = cache_path(cfg, r["sample_id"])
-            if p.exists():
-                self.items.append((r, p))
+            vp, ap = (cache_path(cfg, fid) for fid in feature_sources(r))
+            if vp.exists() and ap.exists():
+                self.items.append((r, vp, ap))
             else:
                 self.missing.append(r["sample_id"])
 
@@ -44,16 +51,32 @@ class CachedFeatureDataset(Dataset):
 
     @property
     def labels(self) -> np.ndarray:
-        return np.array([self.label_to_id[r["label"]] for r, _ in self.items], dtype=np.int64)
+        return np.array([self.label_to_id[r["label"]] for r, _, _ in self.items], dtype=np.int64)
 
     def __getitem__(self, idx: int) -> dict[str, Any]:
         if idx not in self._memory:
-            row, path = self.items[idx]
-            feats = torch.load(path, map_location="cpu", weights_only=True)
+            row, vpath, apath = self.items[idx]
+            feats = dict(self._load(vpath))
+            if apath != vpath:
+                audio = self._load(apath)
+                if audio["audio"].shape[0] != feats["audio"].shape[0]:
+                    raise ValueError(f"{row['sample_id']}: audio source has {audio['audio'].shape[0]} windows, "
+                                     f"the video source's timeline has {feats['audio'].shape[0]}")
+                feats["audio"], feats["audio_silent"] = audio["audio"], audio["audio_silent"]
             feats["label"] = self.label_to_id[row["label"]]
             feats["sample_id"] = row["sample_id"]
             self._memory[idx] = feats
         return self._memory[idx]
+
+    def _load(self, path: Path) -> dict[str, Any]:
+        if path not in self._files:
+            self._files[path] = torch.load(path, map_location="cpu", weights_only=True)
+        return self._files[path]
+
+
+def feature_sources(row: Row) -> tuple[str, str]:
+    """Sample ids whose cached features supply this row's (video, audio); both are its own id by default."""
+    return row.get("video_feature_id") or row["sample_id"], row.get("audio_feature_id") or row["sample_id"]
 
 
 def _pad_stack(seqs: list[torch.Tensor], trailing: tuple[int, ...]) -> tuple[torch.Tensor, torch.Tensor]:

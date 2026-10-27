@@ -43,6 +43,7 @@ looks at sampled frames and audio windows together and returns `consistent`, `co
 - [Training](#training)
   - [On Kaggle (free GPU, recommended)](#on-kaggle-free-gpu-recommended)
   - [On a laptop](#on-a-laptop)
+  - [Audio-swap benchmark (no audio shortcut)](#audio-swap-benchmark-no-audio-shortcut)
   - [On your own data](#on-your-own-data)
 - [Model variants](#model-variants)
 - [Results](#results)
@@ -137,7 +138,8 @@ epochs with early stopping (patience 15) on validation macro-F1.
 ├── models/avid/              # trained model shipped with the repo (best.pt + calibration + test metrics)
 ├── manifests/                # AVID subset manifest (CSV, checksums) and its documentation
 ├── notebooks/
-│   └── kaggle_train.ipynb    # end-to-end training on Kaggle
+│   ├── kaggle_train.ipynb    # end-to-end training on Kaggle (AVID subset)
+│   └── kaggle_swap.ipynb     # audio-swap benchmark: natural audio, no single-modality shortcut
 ├── src/
 │   ├── av_contradiction/
 │   │   ├── config.py         # every setting, with defaults
@@ -333,6 +335,34 @@ encoders: {video: handcrafted, audio: handcrafted}
 preprocess: {audio_sample_rate: 16000, num_frames: 8, frame_size: 64}
 ```
 
+### Audio-swap benchmark (no audio shortcut)
+
+On AVID the contradictions are edited audio, which an audio-only model finds without the video (see
+[Results](#results)). The audio-swap benchmark removes that shortcut using only AVID's 1,300
+**original, unedited** clips:
+
+- **consistent**: clip A's video with A's own audio
+- **contradictory**: clip A's video with the audio of another clip B from the same split
+
+Every audio track and every video appears exactly once in each class, so `audio_only` and
+`video_only` cannot beat chance; only comparing the two can. Partners have the same number of frames
+and audio windows, and a swapped clip keeps A's timeline, so length and timing give nothing away.
+Clips with mostly silent audio are left out. The swaps are assembled from cached features
+(`video_feature_id` / `audio_feature_id` manifest columns), so no videos are re-encoded and no
+editing artefacts exist. Two pairings are built: `random` (main) and `hard` (partner audio as similar
+as possible to the clip's own, e.g. speech replaced by other speech).
+
+On Kaggle: import [`notebooks/kaggle_swap.ipynb`](notebooks/kaggle_swap.ipynb), attach the
+`avid-subset` dataset and, to skip ~1 hour of feature extraction, the output of your earlier training
+notebook (*Add Input → Your Work → Notebooks*); GPU on, Internet on; *Save Version → Save & Run All*.
+It trains all variants over 3 seeds on the swaps, tests the best one on the hard swaps, tests the
+released AVID model on both, and writes `swap_results.zip`. Locally, with features already cached:
+
+```bash
+python -m av_contradiction.cli.make_swaps --source manifests/avid_subset.csv --out output/avid_swap.csv --pairing random
+python -m av_contradiction.cli.run_ablations --seeds 1 2 3 --set experiment_name=avid_swap --set data.manifest=output/avid_swap.csv
+```
+
 ### On your own data
 
 A manifest is a CSV with `sample_id, video_path, label` (`consistent` / `contradictory`) and
@@ -357,6 +387,7 @@ All command-line tools:
 | `prepare_dataset` | make splits; convert AVHBench; build VGGSound audio swaps |
 | `make_synthetic_benchmark` | offline synthetic sanity data |
 | `audit_dataset` | class balance, leakage and decodability checks |
+| `make_swaps` | audio-swap manifest from cached features (natural audio, balanced per modality) |
 | `extract_features` | cache frozen-encoder features |
 | `train` / `evaluate` | train or evaluate one preset |
 | `run_ablations` | all presets × seeds, summary table, best-model export |
@@ -406,6 +437,9 @@ What this shows:
 - So these numbers do **not** show that the model understands audio-visual contradictions, and they
   should not be expected to transfer to unedited real-world videos. A benchmark whose contradictions
   cannot be found from one modality alone is needed for that.
+
+**Audio-swap benchmark** ([above](#audio-swap-benchmark-no-audio-shortcut)): not run yet. It is
+the test of whether the audio-video fusion itself works; results will be added here.
 
 **Synthetic sanity benchmark** (handcrafted encoders, 60 test clips, 3 seeds): test macro-F1 was
 `xattn_concat` 0.994 ± 0.010, `xattn_tensor` 0.978 ± 0.010, `concat` 0.728, `audio_only` 0.525,

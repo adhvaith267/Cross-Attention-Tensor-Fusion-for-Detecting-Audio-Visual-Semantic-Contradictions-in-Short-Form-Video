@@ -4,7 +4,8 @@ A manifest is a CSV or JSONL file with one row per sample. Columns:
 
 required: sample_id, video_path, label
 optional: split, group_id, source_dataset, source_id, source_url, license, is_synthetic,
-          generation_method, audio_source_id, video_source_id, annotator, notes
+          generation_method, audio_source_id, video_source_id, annotator, notes,
+          video_feature_id, audio_feature_id (build the row from other rows' cached features)
 
 ``group_id`` identifies everything that must stay in the same split (original video, speaker,
 or source clip). Synthetic negatives built from clip X and clip Y must carry a group that
@@ -23,6 +24,7 @@ REQUIRED_COLUMNS = ("sample_id", "video_path", "label")
 OPTIONAL_COLUMNS = (
     "split", "group_id", "source_dataset", "source_id", "source_url", "license", "is_synthetic",
     "generation_method", "audio_source_id", "video_source_id", "annotator", "notes",
+    "video_feature_id", "audio_feature_id",
 )
 ALL_COLUMNS = REQUIRED_COLUMNS + OPTIONAL_COLUMNS
 

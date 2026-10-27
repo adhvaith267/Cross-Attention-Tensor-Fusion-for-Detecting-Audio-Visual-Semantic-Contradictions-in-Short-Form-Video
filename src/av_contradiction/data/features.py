@@ -112,6 +112,8 @@ def extract_manifest(
     out_dir.mkdir(parents=True, exist_ok=True)
     extractor = FeatureExtractor(cfg, device)
     report: dict[str, Any] = {"feature_hash": cfg.feature_hash(), "cache_dir": str(out_dir), "extracted": 0, "skipped": 0, "failed": {}}
+    # Rows built from other rows' features (audio swaps) have nothing of their own to extract.
+    rows = [r for r in rows if not (r.get("video_feature_id") or r.get("audio_feature_id"))]
     todo = [r for r in rows if overwrite or not cache_path(cfg, r["sample_id"]).exists()]
     report["skipped"] = len(rows) - len(todo)
 

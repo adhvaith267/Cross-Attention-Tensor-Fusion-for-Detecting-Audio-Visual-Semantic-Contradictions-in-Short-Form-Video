@@ -72,10 +72,12 @@ def audit_manifest(
         invalid.update(bad_labels)
     report["invalid_label_ids"] = bad_labels
 
-    # Same file labelled differently -> annotation inconsistency.
+    # Same file labelled differently -> annotation inconsistency. Rows whose audio comes from another
+    # row's features (audio swaps) legitimately share their video file with a consistent row.
     by_path: dict[str, set[str]] = defaultdict(set)
     for r in rows:
-        by_path[r["video_path"]].add(r["label"])
+        if not r.get("audio_feature_id"):
+            by_path[r["video_path"]].add(r["label"])
     conflicts = sorted(p for p, labs in by_path.items() if len(labs) > 1)
     if conflicts:
         report["errors"].append(f"{len(conflicts)} video files carry conflicting labels")
